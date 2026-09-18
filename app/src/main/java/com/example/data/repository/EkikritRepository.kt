@@ -80,7 +80,7 @@ class EkikritRepository(private val db: EkikritDatabase) {
             institutionName = "Birsa Agricultural University",
             course = "B.Sc (Hons) Agriculture",
             category = "ST (Tribal Beneficiary)",
-            pvtgCommunity = null,
+            pvtgCommunity = "",
             preferredLanguage = "en",
             apaarId = "APAAR-${(1000..9999).random()}-${(1000..9999).random()}-${(1000..9999).random()}",
             annualIncome = 150000.0,
