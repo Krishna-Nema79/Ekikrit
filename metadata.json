@@ -1,0 +1,7 @@
+{
+  "name": "Ekikrit",
+  "description": "Unified Scholarship App for Scheduled Tribe (ST) Students (SIH26238)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
