@@ -1,8 +1,6 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,13 +19,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.ApplicationEntity
+import com.example.data.model.DocumentEntity
 import com.example.data.model.SchemeEntity
 import com.example.data.model.StudentEntity
+import com.example.ui.components.DashboardSkeletonLoader
+import com.example.ui.components.OfflineErrorStateCard
 import com.example.ui.components.PendingActionsCard
-import com.example.ui.components.UnreachedBeneficiaryBanner
+import com.example.ui.components.ScholarshipWizardModal
+import com.example.ui.components.VoiceAssistBanner
 import com.example.ui.util.LocalAppStrings
 
 @Composable
@@ -35,6 +39,7 @@ fun DashboardScreen(
     student: StudentEntity?,
     applications: List<ApplicationEntity>,
     schemes: List<SchemeEntity>,
+    documents: List<DocumentEntity> = emptyList(),
     onSelectScheme: (String) -> Unit,
     onOpenReviewDesk: () -> Unit,
     onOpenJago: () -> Unit,
@@ -48,7 +53,9 @@ fun DashboardScreen(
     val strings = LocalAppStrings.current
     var selectedFilter by remember { mutableStateOf("ALL") }
     var showOverflowMenu by remember { mutableStateOf(false) }
-    var isUnreachedBannerDismissed by remember { mutableStateOf(false) }
+    var isVoiceAssistActive by remember { mutableStateOf(false) }
+    var selectedSchemeForWizard by remember { mutableStateOf<SchemeEntity?>(null) }
+    var isOfflineSimulation by remember { mutableStateOf(false) }
 
     val firstName = remember(student?.name) {
         student?.name?.trim()?.split("\\s+".toRegex())?.firstOrNull()?.takeIf { it.isNotBlank() } ?: "Student"
@@ -63,24 +70,55 @@ fun DashboardScreen(
         }
     }
 
-    val filteredApps by remember(applications, selectedFilter) {
-        derivedStateOf {
-            when (selectedFilter) {
-                "ACTION" -> applications.filter { it.hasDiscrepancy || it.pendingActionDesc != null }
-                "VERIFIED" -> applications.filter { it.currentStage in listOf("SANCTIONED", "DISBURSED") }
-                "IN_PROGRESS" -> applications.filter { it.currentStage == "UNDER_VERIFICATION" || it.currentStage == "SUBMITTED" }
-                else -> applications
-            }
+    val eligibleSchemes = remember(schemes, applications) {
+        schemes.filter { scheme ->
+            applications.none { it.schemeId == scheme.id }
         }
+    }
+
+    val latestAppForTracking = remember(applications) {
+        applications.firstOrNull { it.currentStage != "DISBURSED" } ?: applications.firstOrNull()
+    }
+
+    val spokenText = remember(firstName, eligibleSchemes, applications) {
+        "Johar $firstName! You have ${applications.size} active scholarship applications. ${eligibleSchemes.size} additional tribal schemes are open for 1-click application without paper re-upload."
+    }
+
+    // Modal Wizard for 1-Click Application
+    selectedSchemeForWizard?.let { scheme ->
+        ScholarshipWizardModal(
+            scheme = scheme,
+            student = student,
+            documents = documents,
+            isVoiceAssistActive = isVoiceAssistActive,
+            onDismiss = { selectedSchemeForWizard = null },
+            onSubmitApplication = { schemeId ->
+                onApplyUnreached(schemeId)
+                selectedSchemeForWizard = null
+            }
+        )
     }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 10.dp, bottom = 96.dp)
+        contentPadding = PaddingValues(top = 12.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Top Compact Ministry Bar + Student Profile Card
+        // Voice Assist UI Mode Toggle
+        item {
+            VoiceAssistBanner(
+                isVoiceAssistEnabled = isVoiceAssistActive,
+                onToggleVoiceAssist = { isVoiceAssistActive = it },
+                spokenNarration = spokenText,
+                onPlayNarration = {
+                    // Simulates immediate voice feedback
+                }
+            )
+        }
+
+        // Student Profile & High-Contrast Identity Card
         item {
             Card(
                 modifier = Modifier
@@ -88,59 +126,41 @@ fun DashboardScreen(
                     .testTag("dashboard_hero_card"),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
+                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
-                    // Sleek, compact Ministry Header Strip (no heavy 150dp image blocker)
+                    // Ministry Header Row
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = Color(0xFFD97706),
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    text = "MINISTRY OF TRIBAL AFFAIRS",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                color = Color(0xFF059669),
-                                shape = CircleShape
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .padding(2.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
+                        Surface(
+                            color = Color(0xFFD97706),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
                             Text(
-                                text = strings.nspPfmsActive,
+                                text = "MINISTRY OF TRIBAL AFFAIRS",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
 
-                        // Top Overflow Menu for secondary actions (Switch User, Tour, Security)
+                        // Overflow Options Menu
                         Box {
                             IconButton(
                                 onClick = { showOverflowMenu = true },
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(40.dp)
                                     .testTag("dashboard_overflow_menu_btn")
+                                    .semantics { contentDescription = "Options and Profile switcher menu" }
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "Options",
+                                    contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -151,25 +171,23 @@ fun DashboardScreen(
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("Switch Student Profile") },
-                                    leadingIcon = { Icon(Icons.Default.SwitchAccount, contentDescription = null) },
+                                    leadingIcon = { Icon(Icons.Default.SwitchAccount, contentDescription = null, tint = Color(0xFFD97706)) },
                                     onClick = {
                                         showOverflowMenu = false
                                         onOpenLoginSheet()
-                                    },
-                                    modifier = Modifier.testTag("switch_profile_btn")
+                                    }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("App Tour & SIH Guide") },
-                                    leadingIcon = { Icon(Icons.Default.HelpOutline, contentDescription = null) },
+                                    leadingIcon = { Icon(Icons.Default.HelpOutline, contentDescription = null, tint = Color(0xFF2563EB)) },
                                     onClick = {
                                         showOverflowMenu = false
                                         onOpenIntroTour()
-                                    },
-                                    modifier = Modifier.testTag("open_intro_tour_btn")
+                                    }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Security & Privacy (DPDP)") },
-                                    leadingIcon = { Icon(Icons.Default.Security, contentDescription = null) },
+                                    leadingIcon = { Icon(Icons.Default.Security, contentDescription = null, tint = Color(0xFF059669)) },
                                     onClick = {
                                         showOverflowMenu = false
                                         onOpenSecurityModal()
@@ -181,20 +199,20 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Student Profile & Greeting Row (Optimized for modern Android phones, ample space, zero truncation)
+                    // Student Name & Large High-Contrast Avatar
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
-                            color = MaterialTheme.colorScheme.primary,
+                            color = Color(0xFF1E3A8A),
                             shape = CircleShape,
-                            modifier = Modifier.size(50.dp)
+                            modifier = Modifier.size(54.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
                                     text = initials,
-                                    style = MaterialTheme.typography.titleMedium,
+                                    style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
@@ -204,24 +222,17 @@ fun DashboardScreen(
                         Spacer(modifier = Modifier.width(14.dp))
 
                         Column(modifier = Modifier.weight(1f)) {
-                            // Line 1: Small, lower-emphasis "Welcome back" label
                             Text(
-                                text = strings.welcomePrefix,
+                                text = "Welcome back,",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-
-                            // Line 2: Student's first name only, prominently styled with room to breathe
                             Text(
                                 text = firstName,
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-
-                            Spacer(modifier = Modifier.height(2.dp))
-
-                            // Line 3: Full name and tribal context caption
                             Text(
                                 text = "${student?.name ?: "Student"} · ${student?.category ?: "ST"}",
                                 style = MaterialTheme.typography.bodySmall,
@@ -230,195 +241,472 @@ fun DashboardScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    // Badges row: PVTG & Aadhaar Verified & Institution
+                    // Verification Badges Row
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Surface(
-                            color = Color(0xFFD97706).copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.3f))
+                            color = Color(0xFFFEF3C7),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFF59E0B))
                         ) {
                             Text(
-                                text = strings.pvtgBadge,
+                                text = student?.pvtgCommunity?.takeIf { it.isNotBlank() } ?: "ST Beneficiary",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFB45309),
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                color = Color(0xFF92400E),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
 
                         Surface(
-                            color = Color(0xFF059669).copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.3f))
+                            color = Color(0xFFECFDF5),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFF10B981))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = Color(0xFF059669),
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = strings.aadhaarVerified,
+                                    text = "Aadhaar e-KYC Verified",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF059669)
+                                    color = Color(0xFF065F46)
                                 )
                             }
                         }
-
-                        Text(
-                            text = "•  ${student?.institutionName?.take(22) ?: "NIT Rourkela"}...",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
-                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // High-fidelity Stats Grid with clean typography
+                    // High-Contrast Quick Stats
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         StatMiniBox(
-                            label = strings.statDisbursed,
+                            label = "Disbursed",
                             value = "₹4,500",
-                            sub = "In Bank",
+                            sub = "DBT Credited",
                             color = Color(0xFF059669),
                             modifier = Modifier.weight(1f)
                         )
                         StatMiniBox(
-                            label = strings.statInPipeline,
+                            label = "In Pipeline",
                             value = "₹78,000",
-                            sub = "Post-Matric",
+                            sub = "Post-Matric ST",
                             color = Color(0xFF2563EB),
                             modifier = Modifier.weight(1f)
                         )
                         StatMiniBox(
-                            label = strings.statDigiLocker,
+                            label = "Wallet",
                             value = "5 Docs",
-                            sub = strings.zeroPaperwork,
+                            sub = "DigiLocker Synced",
                             color = Color(0xFFD97706),
                             modifier = Modifier.weight(1f)
                         )
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(18.dp))
         }
 
-        // Section: "What needs you right now" (Lead with ONE clear, calming card)
+        // Pending Actions / Human Review Notices (if any)
         item {
             PendingActionsCard(
                 applications = applications,
                 onOpenReviewDesk = onOpenReviewDesk,
                 onOpenJago = onOpenJago
             )
-            Spacer(modifier = Modifier.height(18.dp))
         }
 
-        // Section: Unreached Beneficiary Nudge (Single dismissible banner)
+        // ==========================================
+        // 1. CARD: "Eligible Scholarships" (Distinct Card)
+        // ==========================================
         item {
-            AnimatedVisibility(
-                visible = !isUnreachedBannerDismissed,
-                enter = fadeIn(),
-                exit = fadeOut()
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("card_eligible_scholarships"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.5.dp, Color(0xFF059669).copy(alpha = 0.4f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column {
-                    UnreachedBeneficiaryBanner(
-                        onOneClickApply = { onApplyUnreached("SCH_TOPCLASS") },
-                        onDismiss = { isUnreachedBannerDismissed = true }
-                    )
-                    Spacer(modifier = Modifier.height(18.dp))
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = Color(0xFF059669),
+                                shape = CircleShape,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.School, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Eligible Scholarships",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Pre-qualified schemes for your tribal category",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = Color(0xFF059669).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "${eligibleSchemes.size.coerceAtLeast(1)} Available",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF059669),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    if (eligibleSchemes.isEmpty()) {
+                        Surface(
+                            color = Color(0xFFECFDF5),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF059669))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "You are currently enrolled in all applicable tribal scholarship schemes!",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color(0xFF065F46)
+                                )
+                            }
+                        }
+                    } else {
+                        eligibleSchemes.forEach { scheme ->
+                            Card(
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = scheme.name,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "Grant: ${scheme.maxAmount}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF059669)
+                                            )
+                                        }
+                                        Surface(
+                                            color = Color(0xFFD97706).copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "100% MATCH",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFD97706),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = scheme.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    // Prominent Touch-friendly CTA Button (Min 48dp)
+                                    Button(
+                                        onClick = { selectedSchemeForWizard = scheme },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp)
+                                            .testTag("apply_wizard_btn_${scheme.code}"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                                    ) {
+                                        Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Apply via Wizard (1-Click)", fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // Section: 5 Schemes Header & Filter Chips
+        // ==========================================
+        // 2. CARD: "My Applications" (Distinct Card)
+        // ==========================================
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("card_my_applications"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.5.dp, Color(0xFF2563EB).copy(alpha = 0.4f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column {
-                    Text(
-                        text = strings.fiveSchemesTitle,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = strings.fiveSchemesSubtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = Color(0xFF2563EB),
+                                shape = CircleShape,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Assignment, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "My Applications",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Active and approved submissions (${applications.size})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
 
-            Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                item {
-                    FilterChip(
-                        selected = selectedFilter == "ALL",
-                        onClick = { selectedFilter = "ALL" },
-                        label = { Text(strings.filterAll) }
-                    )
-                }
-                item {
-                    FilterChip(
-                        selected = selectedFilter == "ACTION",
-                        onClick = { selectedFilter = "ACTION" },
-                        label = { Text(strings.filterNeedsAction) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Color(0xFFFEF3C7),
-                            selectedLabelColor = Color(0xFF92400E)
+                    applications.forEach { app ->
+                        val schemeInfo = schemes.find { it.id == app.schemeId }
+                        CompactSchemeApplicationCard(
+                            application = app,
+                            scheme = schemeInfo,
+                            onClick = { onSelectScheme(app.id) }
                         )
-                    )
+                    }
                 }
-                item {
-                    FilterChip(
-                        selected = selectedFilter == "IN_PROGRESS",
-                        onClick = { selectedFilter = "IN_PROGRESS" },
-                        label = { Text(strings.filterInProgress) }
-                    )
+            }
+        }
+
+        // ==========================================
+        // 3. CARD: "Track Status" (Distinct Card with Timeline)
+        // ==========================================
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("card_track_status"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.5.dp, Color(0xFFD97706).copy(alpha = 0.4f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = Color(0xFFD97706),
+                                shape = CircleShape,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Timeline, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Track Status",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Real-time lifecycle & DBT sanction progress",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        latestAppForTracking?.let { app ->
+                            Surface(
+                                color = Color(0xFFFEF3C7),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    text = app.schemeCode,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF92400E),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // 4-Stage Human-Friendly Timeline Tracker
+                    val activeStage = latestAppForTracking?.currentStage ?: "UNDER_VERIFICATION"
+                    val stageLevel = when (activeStage) {
+                        "SUBMITTED" -> 1
+                        "UNDER_VERIFICATION" -> 2
+                        "SANCTIONED" -> 3
+                        "DISBURSED" -> 4
+                        else -> 2
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TrackingMilestoneRow(
+                            stepNumber = 1,
+                            title = "DigiLocker e-KYC Verified",
+                            subtitle = "Aadhaar, Caste & Income auto-verified against state databases",
+                            isCompleted = stageLevel >= 1,
+                            isActive = stageLevel == 1
+                        )
+                        TrackingMilestoneRow(
+                            stepNumber = 2,
+                            title = "Institution & APAAR Verification",
+                            subtitle = "NIT Rourkela nodal officer approved attendance & Bonafide",
+                            isCompleted = stageLevel >= 2,
+                            isActive = stageLevel == 2
+                        )
+                        TrackingMilestoneRow(
+                            stepNumber = 3,
+                            title = "District Tribal Welfare Officer",
+                            subtitle = "State MoTA sanction order generated with digital signature",
+                            isCompleted = stageLevel >= 3,
+                            isActive = stageLevel == 3
+                        )
+                        TrackingMilestoneRow(
+                            stepNumber = 4,
+                            title = "DBT Bank Credit (PFMS Rail)",
+                            subtitle = "Funds transferred directly to Aadhaar-seeded bank account",
+                            isCompleted = stageLevel >= 4,
+                            isActive = stageLevel == 4
+                        )
+                    }
+
+                    // Direct Action Button to view detailed audit trail
+                    Button(
+                        onClick = {
+                            latestAppForTracking?.let { onSelectScheme(it.id) }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+                    ) {
+                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("View Complete Verification Checklist", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
                 }
-                item {
-                    FilterChip(
-                        selected = selectedFilter == "VERIFIED",
-                        onClick = { selectedFilter = "VERIFIED" },
-                        label = { Text(strings.filterApproved) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackingMilestoneRow(
+    stepNumber: Int,
+    title: String,
+    subtitle: String,
+    isCompleted: Boolean,
+    isActive: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Step $stepNumber: $title. Status: ${if (isCompleted) "Completed" else if (isActive) "In Progress" else "Pending"}" },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            color = when {
+                isCompleted -> Color(0xFF059669)
+                isActive -> Color(0xFFD97706)
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            },
+            shape = CircleShape,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                if (isCompleted) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                } else {
+                    Text(
+                        text = "$stepNumber",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Collapsed Compact Scheme List View by default (Student friendly, low cognitive load)
-        items(filteredApps, key = { it.id }) { app ->
-            val schemeInfo = schemes.find { it.id == app.schemeId }
-            CompactSchemeApplicationCard(
-                application = app,
-                scheme = schemeInfo,
-                onClick = { onSelectScheme(app.id) }
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isActive || isCompleted) FontWeight.Bold else FontWeight.Normal,
+                color = if (isCompleted) Color(0xFF065F46) else if (isActive) Color(0xFF92400E) else MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -445,11 +733,6 @@ private fun StatMiniBox(
     }
 }
 
-/**
- * Compact, student-friendly card for the home screen dashboard.
- * Focuses on essentials: Scheme Name, Status Dot + Friendly label, Grant Amount, and tap target.
- * Detailed progress steppers & multi-source checklists are on the dedicated SchemeDetailScreen.
- */
 @Composable
 fun CompactSchemeApplicationCard(
     application: ApplicationEntity,
@@ -460,7 +743,7 @@ fun CompactSchemeApplicationCard(
     val (dotColor, badgeBg, friendlyStatus) = when (application.currentStage) {
         "SUBMITTED" -> Triple(Color(0xFF2563EB), Color(0xFFEFF6FF), "Submitted • In Review")
         "UNDER_VERIFICATION" -> if (application.hasDiscrepancy) {
-            Triple(Color(0xFFD97706), Color(0xFFFEF3C7), "Extra check (no action needed)")
+            Triple(Color(0xFFD97706), Color(0xFFFEF3C7), "Under Review (No action needed)")
         } else {
             Triple(Color(0xFF0284C7), Color(0xFFF0F9FF), "Checking documents")
         }
