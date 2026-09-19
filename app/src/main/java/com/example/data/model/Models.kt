@@ -35,7 +35,7 @@ data class StudentEntity(
     val institutionName: String = "National Institute of Technology, Rourkela",
     val course: String = "B.Tech Computer Science & Engineering",
     val category: String = "ST (PVTG - Birhor)",
-    val pvtgCommunity: String = "Birhor",
+    val pvtgCommunity: String? = "Birhor",
     val preferredLanguage: String = "en",
     val apaarId: String = "APAAR-8839-4021-9920",
     val annualIncome: Double = 210000.0,

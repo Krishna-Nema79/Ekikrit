@@ -1,7 +1,9 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,15 +19,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.R
 import com.example.data.model.ApplicationEntity
 import com.example.data.model.SchemeEntity
 import com.example.data.model.StudentEntity
@@ -50,11 +47,26 @@ fun DashboardScreen(
 ) {
     val strings = LocalAppStrings.current
     var selectedFilter by remember { mutableStateOf("ALL") }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var isUnreachedBannerDismissed by remember { mutableStateOf(false) }
+
+    val firstName = remember(student?.name) {
+        student?.name?.trim()?.split("\\s+".toRegex())?.firstOrNull()?.takeIf { it.isNotBlank() } ?: "Student"
+    }
+
+    val initials = remember(student?.name) {
+        val parts = student?.name?.trim()?.split("\\s+".toRegex())?.filter { it.isNotBlank() } ?: emptyList()
+        when {
+            parts.size >= 2 -> "${parts[0].take(1)}${parts[1].take(1)}".uppercase()
+            parts.size == 1 -> parts[0].take(2).uppercase()
+            else -> "ST"
+        }
+    }
 
     val filteredApps = when (selectedFilter) {
         "ACTION" -> applications.filter { it.hasDiscrepancy || it.pendingActionDesc != null }
         "VERIFIED" -> applications.filter { it.currentStage in listOf("SANCTIONED", "DISBURSED") }
-        "IN_PROGRESS" -> applications.filter { it.currentStage == "UNDER_VERIFICATION" }
+        "IN_PROGRESS" -> applications.filter { it.currentStage == "UNDER_VERIFICATION" || it.currentStage == "SUBMITTED" }
         else -> applications
     }
 
@@ -62,9 +74,9 @@ fun DashboardScreen(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(top = 8.dp, bottom = 96.dp)
+        contentPadding = PaddingValues(top = 10.dp, bottom = 96.dp)
     ) {
-        // Hero Card with high contrast, ample padding, and zero text cut-off
+        // Top Compact Ministry Bar + Student Profile Card
         item {
             Card(
                 modifier = Modifier
@@ -72,273 +84,265 @@ fun DashboardScreen(
                     .testTag("dashboard_hero_card"),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column {
-                    // Visual Header Image with gradient scrim
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(150.dp)
+                Column(modifier = Modifier.padding(18.dp)) {
+                    // Sleek, compact Ministry Header Strip (no heavy 150dp image blocker)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.hero_tribal_scholarship),
-                            contentDescription = "Tribal Education Header",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Black.copy(alpha = 0.35f),
-                                            Color.Black.copy(alpha = 0.85f)
-                                        )
-                                    )
-                                )
-                        )
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(16.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = Color(0xFFD97706),
+                                shape = RoundedCornerShape(4.dp)
                             ) {
-                                Surface(
-                                    color = Color(0xFFD97706),
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        text = "MINISTRY OF TRIBAL AFFAIRS",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(
-                                    color = Color(0xFF059669),
-                                    shape = CircleShape
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .padding(2.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = strings.nspPfmsActive,
+                                    text = "MINISTRY OF TRIBAL AFFAIRS",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.9f)
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = Color(0xFF059669),
+                                shape = CircleShape
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .padding(2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = strings.portalName,
-                                style = MaterialTheme.typography.titleLarge,
+                                text = strings.nspPfmsActive,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Top Overflow Menu for secondary actions (Switch User, Tour, Security)
+                        Box {
+                            IconButton(
+                                onClick = { showOverflowMenu = true },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .testTag("dashboard_overflow_menu_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "Options",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showOverflowMenu,
+                                onDismissRequest = { showOverflowMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Switch Student Profile") },
+                                    leadingIcon = { Icon(Icons.Default.SwitchAccount, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        onOpenLoginSheet()
+                                    },
+                                    modifier = Modifier.testTag("switch_profile_btn")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("App Tour & SIH Guide") },
+                                    leadingIcon = { Icon(Icons.Default.HelpOutline, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        onOpenIntroTour()
+                                    },
+                                    modifier = Modifier.testTag("open_intro_tour_btn")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Security & Privacy (DPDP)") },
+                                    leadingIcon = { Icon(Icons.Default.Security, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        onOpenSecurityModal()
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Student Profile & Greeting Row (Optimized for modern Android phones, ample space, zero truncation)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = CircleShape,
+                            modifier = Modifier.size(50.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = initials,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            // Line 1: Small, lower-emphasis "Welcome back" label
+                            Text(
+                                text = strings.welcomePrefix,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            // Line 2: Student's first name only, prominently styled with room to breathe
+                            Text(
+                                text = firstName,
+                                style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            // Line 3: Full name and tribal context caption
+                            Text(
+                                text = "${student?.name ?: "Student"} · ${student?.category ?: "ST"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    // Student Profile & Quick Overview
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Badges row: PVTG & Aadhaar Verified & Institution
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            color = Color(0xFFD97706).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.3f))
+                        ) {
+                            Text(
+                                text = strings.pvtgBadge,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFB45309),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        Surface(
+                            color = Color(0xFF059669).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.3f))
                         ) {
                             Row(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primary,
-                                    shape = CircleShape,
-                                    modifier = Modifier.size(46.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = student?.name?.split(" ")?.mapNotNull { it.firstOrNull()?.toString() }?.take(2)?.joinToString("") ?: "ST",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = "${strings.welcomePrefix}, ${student?.name ?: "Student"}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Surface(
-                                            color = Color(0xFFD97706).copy(alpha = 0.15f),
-                                            shape = RoundedCornerShape(6.dp),
-                                            border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.35f))
-                                        ) {
-                                            Text(
-                                                text = strings.pvtgBadge,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFD97706),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
-                                        }
-
-                                        Surface(
-                                            color = Color(0xFF059669).copy(alpha = 0.15f),
-                                            shape = RoundedCornerShape(6.dp),
-                                            border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.35f))
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFF059669),
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(3.dp))
-                                                Text(
-                                                    text = strings.aadhaarVerified,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF059669)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-
-                                    Text(
-                                        text = "${student?.institutionName ?: "NIT Rourkela"} • ${student?.course ?: "B.Tech"}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = onOpenLoginSheet,
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                    modifier = Modifier.testTag("switch_profile_btn")
-                                ) {
-                                    Icon(
-                                        Icons.Default.SwitchAccount,
-                                        contentDescription = "Switch User",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = "Switch",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-
-                                OutlinedButton(
-                                    onClick = onOpenIntroTour,
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                                    modifier = Modifier.testTag("open_intro_tour_btn")
-                                ) {
-                                    Icon(Icons.Default.HelpOutline, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(strings.appGuide, style = MaterialTheme.typography.labelSmall)
-                                }
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = strings.aadhaarVerified,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF059669)
+                                )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = "•  ${student?.institutionName?.take(22) ?: "NIT Rourkela"}...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                    }
 
-                        // High-fidelity Stats Grid with clean typography
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            StatMiniBox(
-                                label = strings.statDisbursed,
-                                value = "₹4,500",
-                                sub = "Canara Bank",
-                                color = Color(0xFF059669),
-                                modifier = Modifier.weight(1f)
-                            )
-                            StatMiniBox(
-                                label = strings.statInPipeline,
-                                value = "₹78,000",
-                                sub = "Post-Matric",
-                                color = Color(0xFF2563EB),
-                                modifier = Modifier.weight(1f)
-                            )
-                            StatMiniBox(
-                                label = strings.statDigiLocker,
-                                value = "5 Docs",
-                                sub = strings.zeroPaperwork,
-                                color = Color(0xFFD97706),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // High-fidelity Stats Grid with clean typography
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        StatMiniBox(
+                            label = strings.statDisbursed,
+                            value = "₹4,500",
+                            sub = "In Bank",
+                            color = Color(0xFF059669),
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatMiniBox(
+                            label = strings.statInPipeline,
+                            value = "₹78,000",
+                            sub = "Post-Matric",
+                            color = Color(0xFF2563EB),
+                            modifier = Modifier.weight(1f)
+                        )
+                        StatMiniBox(
+                            label = strings.statDigiLocker,
+                            value = "5 Docs",
+                            sub = strings.zeroPaperwork,
+                            color = Color(0xFFD97706),
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(18.dp))
         }
 
-        // Section 4.2: Global Pending Actions Card
+        // Section: "What needs you right now" (Lead with ONE clear, calming card)
         item {
             PendingActionsCard(
                 applications = applications,
                 onOpenReviewDesk = onOpenReviewDesk,
                 onOpenJago = onOpenJago
             )
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(18.dp))
         }
 
-        // Section 4.8: Unreached Beneficiary Matching Nudge (Bonus feature)
+        // Section: Unreached Beneficiary Nudge (Single dismissible banner)
         item {
-            UnreachedBeneficiaryBanner(
-                onOneClickApply = { onApplyUnreached("SCH_TOPCLASS") }
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            AnimatedVisibility(
+                visible = !isUnreachedBannerDismissed,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Column {
+                    UnreachedBeneficiaryBanner(
+                        onOneClickApply = { onApplyUnreached("SCH_TOPCLASS") },
+                        onDismiss = { isUnreachedBannerDismissed = true }
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                }
+            }
         }
 
-        // Filter Chips Row
+        // Section: 5 Schemes Header & Filter Chips
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -399,18 +403,18 @@ fun DashboardScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Cards for the schemes
+        // Collapsed Compact Scheme List View by default (Student friendly, low cognitive load)
         items(filteredApps) { app ->
             val schemeInfo = schemes.find { it.id == app.schemeId }
-            SchemeApplicationCard(
+            CompactSchemeApplicationCard(
                 application = app,
                 scheme = schemeInfo,
                 onClick = { onSelectScheme(app.id) }
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
         }
     }
 }
@@ -424,9 +428,9 @@ private fun StatMiniBox(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.35f)),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.3f)),
         modifier = modifier
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -437,23 +441,28 @@ private fun StatMiniBox(
     }
 }
 
+/**
+ * Compact, student-friendly card for the home screen dashboard.
+ * Focuses on essentials: Scheme Name, Status Dot + Friendly label, Grant Amount, and tap target.
+ * Detailed progress steppers & multi-source checklists are on the dedicated SchemeDetailScreen.
+ */
 @Composable
-fun SchemeApplicationCard(
+fun CompactSchemeApplicationCard(
     application: ApplicationEntity,
     scheme: SchemeEntity?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val (stageColor, stageBg, stageLabel, progressPercent) = when (application.currentStage) {
-        "SUBMITTED" -> Quad(Color(0xFF2563EB), Color(0xFFEFF6FF), "Applied", 0.25f)
+    val (dotColor, badgeBg, friendlyStatus) = when (application.currentStage) {
+        "SUBMITTED" -> Triple(Color(0xFF2563EB), Color(0xFFEFF6FF), "Submitted • In Review")
         "UNDER_VERIFICATION" -> if (application.hasDiscrepancy) {
-            Quad(Color(0xFFD97706), Color(0xFFFEF3C7), "Exception Review", 0.50f)
+            Triple(Color(0xFFD97706), Color(0xFFFEF3C7), "Extra check (no action needed)")
         } else {
-            Quad(Color(0xFF0284C7), Color(0xFFF0F9FF), "Under Verification", 0.50f)
+            Triple(Color(0xFF0284C7), Color(0xFFF0F9FF), "Checking documents")
         }
-        "SANCTIONED" -> Quad(Color(0xFF059669), Color(0xFFECFDF5), "Sanctioned", 0.75f)
-        "DISBURSED" -> Quad(Color(0xFF16A34A), Color(0xFFF0FDF4), "Disbursed via DBT", 1.0f)
-        else -> Quad(Color(0xFF9333EA), Color(0xFFFAF5FF), "Unclaimed Match", 0.15f)
+        "SANCTIONED" -> Triple(Color(0xFF059669), Color(0xFFECFDF5), "Approved • Grant Ready")
+        "DISBURSED" -> Triple(Color(0xFF16A34A), Color(0xFFF0FDF4), "Deposited to Bank")
+        else -> Triple(Color(0xFF9333EA), Color(0xFFFAF5FF), "Eligible to Claim")
     }
 
     Card(
@@ -461,159 +470,94 @@ fun SchemeApplicationCard(
             .fillMaxWidth()
             .clickable { onClick() }
             .testTag("scheme_card_${application.schemeCode}"),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(
             1.dp,
-            if (application.hasDiscrepancy) Color(0xFFF59E0B).copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+            if (application.hasDiscrepancy) Color(0xFFF59E0B).copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(6.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                // Top line: Portal pill & Status pill
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = scheme?.portalOrigin ?: "National Scholarship Portal",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                    )
-                }
-
-                Surface(
-                    color = if (application.hasDiscrepancy) Color(0xFFFEF3C7) else stageBg,
-                    shape = CircleShape
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(4.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(stageColor)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = stageLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (application.hasDiscrepancy) Color(0xFF92400E) else stageColor
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = application.schemeName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            if (scheme != null) {
-                Text(
-                    text = "Grant: ${scheme.maxAmount}",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF059669),
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = application.statusText,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (application.hasDiscrepancy) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = Color(0xFFD97706),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Auto-routed to District Reviewer Desk. Student not blocked.",
+                            text = scheme?.portalOrigin ?: "NSP",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
-                }
-            }
 
-            // Visual Segmented Progress Bar
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                for (step in 1..4) {
-                    val stepFraction = step * 0.25f
-                    val isFilled = progressPercent >= stepFraction
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(if (isFilled) stageColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-                    )
+                    Surface(
+                        color = badgeBg,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(dotColor)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = friendlyStatus,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (application.hasDiscrepancy) Color(0xFF92400E) else dotColor
+                            )
+                        }
+                    }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Scheme Name
                 Text(
-                    text = "Updated: ${application.lastUpdated}",
-                    style = MaterialTheme.typography.labelSmall,
+                    text = application.schemeName,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Grant amount & quick status
+                Text(
+                    text = "Grant: ${scheme?.maxAmount ?: "Government Aid"} • Tap to view",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "View Timeline",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Action Chevron
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = "View details",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
-
-private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
