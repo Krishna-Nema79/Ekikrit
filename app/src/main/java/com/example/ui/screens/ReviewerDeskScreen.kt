@@ -28,10 +28,14 @@ fun ReviewerDeskScreen(
 ) {
     var selectedFilter by remember { mutableStateOf("PENDING") }
 
-    val filteredItems = if (selectedFilter == "PENDING") {
-        reviewItems.filter { it.status == "PENDING" }
-    } else {
-        reviewItems.filter { it.status != "PENDING" }
+    val filteredItems by remember(reviewItems, selectedFilter) {
+        derivedStateOf {
+            if (selectedFilter == "PENDING") {
+                reviewItems.filter { it.status == "PENDING" }
+            } else {
+                reviewItems.filter { it.status != "PENDING" }
+            }
+        }
     }
 
     LazyColumn(
@@ -196,7 +200,7 @@ fun ReviewerDeskScreen(
                 }
             }
         } else {
-            items(filteredItems) { item ->
+            items(filteredItems, key = { it.id }) { item ->
                 ReviewItemCard(
                     item = item,
                     onApprove = { note -> onResolve(item.id, true, note) },
@@ -260,11 +264,22 @@ private fun ReviewItemCard(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
+            val isCategoryCheck = item.fieldName.contains("Category", ignoreCase = true) ||
+                    item.fieldName.contains("PVTG", ignoreCase = true) ||
+                    item.fieldName.contains("Caste", ignoreCase = true)
+            
             Text(
-                text = "${item.studentName} (${item.category})",
+                text = "Case Reference: ${if (item.applicationId.isNotBlank()) item.applicationId else "APP-CASE-${item.id.takeLast(6)}"}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
+            if (isCategoryCheck && item.category.isNotBlank()) {
+                Text(
+                    text = "Category Under Review: ${item.category}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Text(
                 text = "Target Scheme: ${item.schemeName}",
                 style = MaterialTheme.typography.bodySmall,

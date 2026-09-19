@@ -427,6 +427,15 @@ object SeedData {
         )
     }
 
+    suspend fun ensureDatabasePopulated(db: EkikritDatabase) {
+        val schemes = db.schemeDao().getAllSchemes()
+        if (schemes.isEmpty()) {
+            populateDatabase(db)
+        } else {
+            ensurePresetStudents(db)
+        }
+    }
+
     suspend fun ensurePresetStudents(db: EkikritDatabase) {
         val existing = db.studentDao().getAllStudents()
         if (existing.size < 3) {

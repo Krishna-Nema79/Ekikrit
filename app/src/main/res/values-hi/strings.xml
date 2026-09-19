@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">एकीकृत</string>
+    <string name="ministry_title">जनजातीय कार्य मंत्रालय</string>
+    <string name="portal_subtitle">एकीकृत राष्ट्रीय जनजातीय छात्रवृत्ति पोर्टल</string>
+    <string name="tab_home">होम</string>
+    <string name="tab_documents">वॉलेट</string>
+    <string name="tab_disbursement">डीबीटी ट्रैकर</string>
+    <string name="tab_audit">ऑडिट लॉग</string>
+    <string name="tab_jago">जागो एआई</string>
+    <string name="welcome_back">स्वागत है</string>
+    <string name="stat_disbursed">डीबीटी भुगतान</string>
+    <string name="stat_in_pipeline">सत्यापन में</string>
+    <string name="stat_schemes_active">जनजातीय योजनाएं</string>
+    <string name="switch_profile">प्रोफाइल बदलें</string>
+    <string name="officer_desk">अधिकारी समीक्षा</string>
+    <string name="grant_dpdp_consent">डीपीडीपी सहमति</string>
+</resources>

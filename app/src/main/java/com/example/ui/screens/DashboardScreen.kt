@@ -63,11 +63,15 @@ fun DashboardScreen(
         }
     }
 
-    val filteredApps = when (selectedFilter) {
-        "ACTION" -> applications.filter { it.hasDiscrepancy || it.pendingActionDesc != null }
-        "VERIFIED" -> applications.filter { it.currentStage in listOf("SANCTIONED", "DISBURSED") }
-        "IN_PROGRESS" -> applications.filter { it.currentStage == "UNDER_VERIFICATION" || it.currentStage == "SUBMITTED" }
-        else -> applications
+    val filteredApps by remember(applications, selectedFilter) {
+        derivedStateOf {
+            when (selectedFilter) {
+                "ACTION" -> applications.filter { it.hasDiscrepancy || it.pendingActionDesc != null }
+                "VERIFIED" -> applications.filter { it.currentStage in listOf("SANCTIONED", "DISBURSED") }
+                "IN_PROGRESS" -> applications.filter { it.currentStage == "UNDER_VERIFICATION" || it.currentStage == "SUBMITTED" }
+                else -> applications
+            }
+        }
     }
 
     LazyColumn(
@@ -407,7 +411,7 @@ fun DashboardScreen(
         }
 
         // Collapsed Compact Scheme List View by default (Student friendly, low cognitive load)
-        items(filteredApps) { app ->
+        items(filteredApps, key = { it.id }) { app ->
             val schemeInfo = schemes.find { it.id == app.schemeId }
             CompactSchemeApplicationCard(
                 application = app,

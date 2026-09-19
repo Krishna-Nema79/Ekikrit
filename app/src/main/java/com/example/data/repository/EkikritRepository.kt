@@ -33,7 +33,7 @@ class EkikritRepository(private val db: EkikritDatabase) {
     val auditLogsFlow: Flow<List<AuditLogEntity>> = db.auditLogDao().getAllLogsFlow()
 
     suspend fun ensurePresetStudents() = withContext(Dispatchers.IO) {
-        SeedData.ensurePresetStudents(db)
+        SeedData.ensureDatabasePopulated(db)
     }
 
     suspend fun switchStudent(studentId: String) = withContext(Dispatchers.IO) {

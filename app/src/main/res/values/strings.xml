@@ -1,3 +1,17 @@
 <resources>
     <string name="app_name">Ekikrit</string>
+    <string name="ministry_title">Ministry of Tribal Affairs</string>
+    <string name="portal_subtitle">Unified National Tribal Scholarship Portal</string>
+    <string name="tab_home">Home</string>
+    <string name="tab_documents">Wallet</string>
+    <string name="tab_disbursement">DBT Tracker</string>
+    <string name="tab_audit">Audit Log</string>
+    <string name="tab_jago">JAGO AI</string>
+    <string name="welcome_back">Welcome back</string>
+    <string name="stat_disbursed">Disbursed (DBT)</string>
+    <string name="stat_in_pipeline">In Verification</string>
+    <string name="stat_schemes_active">Tribal Schemes</string>
+    <string name="switch_profile">Switch Student</string>
+    <string name="officer_desk">Officer Review</string>
+    <string name="grant_dpdp_consent">DPDP Consent</string>
 </resources>

@@ -36,6 +36,9 @@ interface SchemeDao {
     @Query("SELECT * FROM schemes ORDER BY id ASC")
     fun getAllSchemesFlow(): Flow<List<SchemeEntity>>
 
+    @Query("SELECT * FROM schemes ORDER BY id ASC")
+    suspend fun getAllSchemes(): List<SchemeEntity>
+
     @Query("SELECT * FROM schemes WHERE id = :id LIMIT 1")
     suspend fun getSchemeById(id: String): SchemeEntity?
 

@@ -214,7 +214,7 @@ fun DocumentsWalletScreen(
         }
 
         // Document Cards
-        items(documents) { doc ->
+        items(documents, key = { it.id }) { doc ->
             DocumentWalletCard(
                 doc = doc,
                 reusableLabel = strings.reusableBadge,

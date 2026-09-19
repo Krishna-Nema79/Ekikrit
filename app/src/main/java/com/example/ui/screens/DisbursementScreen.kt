@@ -274,7 +274,7 @@ fun DisbursementScreen(
         }
 
         // List of Pending / Upcoming Disbursements
-        items(pendingApplications) { app ->
+        items(pendingApplications, key = { it.id }) { app ->
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -490,7 +490,7 @@ fun DisbursementScreen(
         }
 
         // Completed Items
-        items(disbursements) { item ->
+        items(disbursements, key = { it.id }) { item ->
             Card(
                 modifier = Modifier
                     .fillMaxWidth()

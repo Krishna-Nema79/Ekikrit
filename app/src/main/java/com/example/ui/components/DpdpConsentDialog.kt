@@ -88,7 +88,7 @@ fun DpdpConsentDialog(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Data is encrypted at rest, masked (Aadhaar/Bank), and never shared for non-scholarship purposes.",
+                        text = "Data is stored in isolated app sandbox, sensitive identifiers (Aadhaar/Bank) are masked, and access is strictly purpose-bound under DPDP Act Section 6.",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF059669)
                     )
