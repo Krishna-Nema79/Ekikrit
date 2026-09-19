@@ -26,6 +26,8 @@ import com.example.ui.util.LocalAppStrings
 fun DocumentsWalletScreen(
     documents: List<DocumentEntity>,
     isDigiLockerLinked: Boolean = true,
+    hasConsentGiven: Boolean = true,
+    studentName: String = "Birsa Munda Tirkey",
     onConnectDigiLocker: (String) -> Unit = {},
     onPullNewDocument: (String, String, String, String) -> Unit,
     onOpenConsentDialog: () -> Unit,
@@ -42,6 +44,43 @@ fun DocumentsWalletScreen(
             .padding(horizontal = 16.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 96.dp)
     ) {
+        // Consent Revocation Warning Banner
+        if (!hasConsentGiven) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+                    border = BorderStroke(1.dp, Color(0xFFFECACA))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(22.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "DPDP Act Consent Revoked",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF991B1B)
+                            )
+                            Text(
+                                text = "Automated document retrieval is disabled until consent is re-granted.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFB91C1C)
+                            )
+                        }
+                        TextButton(onClick = onOpenConsentDialog) {
+                            Text("Re-grant", color = Color(0xFF059669), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+
         // DigiLocker Connection & Wallet Header
         item {
             Card(
@@ -178,7 +217,13 @@ fun DocumentsWalletScreen(
                         }
 
                         OutlinedButton(
-                            onClick = { showPullDocSheet = true },
+                            onClick = {
+                                if (hasConsentGiven) {
+                                    showPullDocSheet = true
+                                } else {
+                                    onOpenConsentDialog()
+                                }
+                            },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.testTag("pull_new_digilocker_doc_btn")
                         ) {
@@ -227,6 +272,7 @@ fun DocumentsWalletScreen(
     // Interactive DigiLocker Connect & Sync Modal
     if (showDigiLockerModal) {
         DigiLockerConnectModal(
+            studentName = studentName,
             onDismiss = { showDigiLockerModal = false },
             onSuccess = { phoneOrAadhaar ->
                 onConnectDigiLocker(phoneOrAadhaar)

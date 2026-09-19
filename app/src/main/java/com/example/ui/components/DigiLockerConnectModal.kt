@@ -36,6 +36,7 @@ enum class DigiLockerStep {
 fun DigiLockerConnectModal(
     onDismiss: () -> Unit,
     onSuccess: (mobileOrAadhaar: String) -> Unit,
+    studentName: String = "Birsa Munda Tirkey",
     modifier: Modifier = Modifier
 ) {
     var step by remember { mutableStateOf(DigiLockerStep.LOGIN) }
@@ -482,7 +483,7 @@ fun DigiLockerConnectModal(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(12.dp)) {
-                                        Text("Linked Identity: Birsa Munda Tirkey", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                                        Text("Linked Identity: $studentName", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                                         Text("UIDAI Verification: Aadhaar XXXX-8924 (Active)", style = MaterialTheme.typography.labelSmall, color = Color(0xFF0369A1))
                                         Text("Odisha e-District: ST & Income Registered", style = MaterialTheme.typography.labelSmall, color = Color(0xFF0369A1))
                                     }

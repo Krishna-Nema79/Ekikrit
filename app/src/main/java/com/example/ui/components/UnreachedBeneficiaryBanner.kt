@@ -19,6 +19,10 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun UnreachedBeneficiaryBanner(
+    title: String = "Did you know? You're eligible for 'Top Class ST Education'!",
+    description: String = "Ministry automated cross-match found regular enrollment, but no claim has been submitted. Tap to apply with 1-click DigiLocker credentials!",
+    badgeText: String = "UDISE+ & APAAR CROSS-MATCH NUDGE",
+    buttonText: String = "1-Click Apply via DigiLocker (No Paperwork)",
     onOneClickApply: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -64,7 +68,7 @@ fun UnreachedBeneficiaryBanner(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "UDISE+ & APAAR CROSS-MATCH NUDGE",
+                                text = badgeText,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF451A03)
@@ -76,7 +80,7 @@ fun UnreachedBeneficiaryBanner(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Did you know? You're eligible for 'Top Class ST Education'!",
+                    text = title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -85,7 +89,7 @@ fun UnreachedBeneficiaryBanner(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = "Ministry automated cross-match found your regular enrollment at NIT Rourkela (AISHE-U-0355), but no claim has been submitted. You can receive 100% tuition coverage + ₹2,22,000 living stipend!",
+                    text = description,
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFE2E8F0)
                 )
@@ -104,7 +108,7 @@ fun UnreachedBeneficiaryBanner(
                         .testTag("apply_unreached_scheme_btn")
                 ) {
                     Text(
-                        text = "1-Click Apply via DigiLocker (No Paperwork)",
+                        text = buttonText,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold
                     )

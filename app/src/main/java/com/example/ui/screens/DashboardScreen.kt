@@ -46,6 +46,7 @@ fun DashboardScreen(
     onOpenSecurityModal: () -> Unit,
     onOpenIntroTour: () -> Unit,
     onOpenLoginSheet: () -> Unit = {},
+    topUnreachedScheme: com.example.data.eligibility.EligibilityEvaluation? = null,
     modifier: Modifier = Modifier
 ) {
     val strings = LocalAppStrings.current
@@ -330,12 +331,18 @@ fun DashboardScreen(
             Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Section 4.8: Unreached Beneficiary Matching Nudge (Bonus feature)
-        item {
-            UnreachedBeneficiaryBanner(
-                onOneClickApply = { onApplyUnreached("SCH_TOPCLASS") }
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+        // Section 4.8: Unreached Beneficiary Matching Nudge (Dynamic multi-persona matching)
+        val unreachedMatch = topUnreachedScheme ?: com.example.data.eligibility.EligibilityEngine.findTopUnreachedScheme(student, schemes, applications)
+        if (unreachedMatch != null && unreachedMatch.isUnclaimed) {
+            item {
+                UnreachedBeneficiaryBanner(
+                    title = "Did you know? You're eligible for '${unreachedMatch.schemeName}'!",
+                    description = "Automated cross-match found enrollment for ${student?.name ?: "student"} (${student?.institutionName ?: "institution"}). Entitlement: ${unreachedMatch.estimatedGrant}. Tap to apply with 1-click DigiLocker credentials!",
+                    badgeText = "UDISE+ & APAAR CROSS-MATCH NUDGE",
+                    onOneClickApply = { onApplyUnreached(unreachedMatch.schemeId) }
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
 
         // Filter Chips Row

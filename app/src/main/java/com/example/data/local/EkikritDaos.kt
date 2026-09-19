@@ -45,17 +45,26 @@ interface SchemeDao {
 
 @Dao
 interface ApplicationDao {
-    @Query("SELECT * FROM applications ORDER BY id ASC")
-    fun getAllApplicationsFlow(): Flow<List<ApplicationEntity>>
+    @Query("SELECT * FROM applications WHERE studentId = :studentId ORDER BY id ASC")
+    fun getApplicationsForStudentFlow(studentId: String): Flow<List<ApplicationEntity>>
 
-    @Query("SELECT * FROM applications WHERE id = :id LIMIT 1")
-    fun getApplicationByIdFlow(id: String): Flow<ApplicationEntity?>
+    @Query("SELECT * FROM applications WHERE studentId = :studentId ORDER BY id ASC")
+    suspend fun getApplicationsForStudent(studentId: String): List<ApplicationEntity>
+
+    @Query("SELECT * FROM applications WHERE id = :id AND studentId = :studentId LIMIT 1")
+    fun getApplicationByIdForStudentFlow(id: String, studentId: String): Flow<ApplicationEntity?>
+
+    @Query("SELECT * FROM applications WHERE id = :id AND studentId = :studentId LIMIT 1")
+    suspend fun getApplicationByIdForStudent(id: String, studentId: String): ApplicationEntity?
+
+    @Query("SELECT * FROM applications WHERE studentId = :studentId AND schemeId = :schemeId AND academicYear = :academicYear LIMIT 1")
+    suspend fun getApplicationByStudentSchemeYear(studentId: String, schemeId: String, academicYear: String): ApplicationEntity?
 
     @Query("SELECT * FROM applications WHERE id = :id LIMIT 1")
     suspend fun getApplicationById(id: String): ApplicationEntity?
 
-    @Query("SELECT * FROM applications WHERE schemeId = :schemeId LIMIT 1")
-    suspend fun getApplicationBySchemeId(schemeId: String): ApplicationEntity?
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(application: ApplicationEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(applications: List<ApplicationEntity>)
@@ -76,8 +85,14 @@ interface ApplicationDao {
 
 @Dao
 interface DocumentDao {
-    @Query("SELECT * FROM documents ORDER BY id ASC")
-    fun getAllDocumentsFlow(): Flow<List<DocumentEntity>>
+    @Query("SELECT * FROM documents WHERE studentId = :studentId ORDER BY id ASC")
+    fun getDocumentsForStudentFlow(studentId: String): Flow<List<DocumentEntity>>
+
+    @Query("SELECT * FROM documents WHERE id = :id AND studentId = :studentId LIMIT 1")
+    suspend fun getDocumentByIdForStudent(id: String, studentId: String): DocumentEntity?
+
+    @Query("DELETE FROM documents WHERE id = :id AND studentId = :studentId")
+    suspend fun deleteDocumentForStudent(id: String, studentId: String): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(docs: List<DocumentEntity>)
@@ -130,8 +145,8 @@ interface ReviewQueueDao {
 
 @Dao
 interface DisbursementDao {
-    @Query("SELECT * FROM disbursements ORDER BY id DESC")
-    fun getAllDisbursementsFlow(): Flow<List<DisbursementEntity>>
+    @Query("SELECT d.* FROM disbursements d INNER JOIN applications a ON a.id = d.applicationId WHERE a.studentId = :studentId ORDER BY d.id DESC")
+    fun getDisbursementsForStudentFlow(studentId: String): Flow<List<DisbursementEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(records: List<DisbursementEntity>)
@@ -139,8 +154,8 @@ interface DisbursementDao {
 
 @Dao
 interface AuditLogDao {
-    @Query("SELECT * FROM audit_logs ORDER BY id DESC")
-    fun getAllLogsFlow(): Flow<List<AuditLogEntity>>
+    @Query("SELECT * FROM audit_logs WHERE studentId = :studentId ORDER BY id DESC")
+    fun getLogsForStudentFlow(studentId: String): Flow<List<AuditLogEntity>>
 
     @Insert
     suspend fun insert(log: AuditLogEntity)

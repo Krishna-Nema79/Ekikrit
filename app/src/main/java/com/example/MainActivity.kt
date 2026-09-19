@@ -55,6 +55,7 @@ fun EkikritMainApp(
     val allReviewItems by viewModel.allReviewItems.collectAsStateWithLifecycle()
     val auditLogs by viewModel.auditLogs.collectAsStateWithLifecycle()
     val allStudents by viewModel.allStudents.collectAsStateWithLifecycle()
+    val topUnreachedScheme by viewModel.topUnreachedScheme.collectAsStateWithLifecycle()
 
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val selectedAppId by viewModel.selectedApplicationId.collectAsStateWithLifecycle()
@@ -159,9 +160,13 @@ fun EkikritMainApp(
                         val isAtReviewerDesk = currentTab == AppTab.REVIEWER_QUEUE
                         Button(
                             onClick = {
-                                viewModel.selectTab(
-                                    if (isAtReviewerDesk) AppTab.DASHBOARD else AppTab.REVIEWER_QUEUE
-                                )
+                                if (isAtReviewerDesk) {
+                                    viewModel.switchToStudentRole()
+                                    viewModel.selectTab(AppTab.DASHBOARD)
+                                } else {
+                                    viewModel.switchToReviewerRole()
+                                    viewModel.selectTab(AppTab.REVIEWER_QUEUE)
+                                }
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isAtReviewerDesk) Color(0xFF059669) else Color(0xFFD97706)
@@ -356,7 +361,8 @@ fun EkikritMainApp(
                             onOpenConsentDialog = { viewModel.toggleConsentDialog(true) },
                             onOpenSecurityModal = { showSecurityModal = true },
                             onOpenIntroTour = { showIntroTour = true },
-                            onOpenLoginSheet = { viewModel.toggleLoginSheet(true) }
+                            onOpenLoginSheet = { viewModel.toggleLoginSheet(true) },
+                            topUnreachedScheme = topUnreachedScheme
                         )
                     }
                     AppTab.SCHEMES -> {
@@ -371,13 +377,16 @@ fun EkikritMainApp(
                             onOpenConsentDialog = { viewModel.toggleConsentDialog(true) },
                             onOpenSecurityModal = { showSecurityModal = true },
                             onOpenIntroTour = { showIntroTour = true },
-                            onOpenLoginSheet = { viewModel.toggleLoginSheet(true) }
+                            onOpenLoginSheet = { viewModel.toggleLoginSheet(true) },
+                            topUnreachedScheme = topUnreachedScheme
                         )
                     }
                     AppTab.DOCUMENTS -> {
                         DocumentsWalletScreen(
                             documents = documents,
                             isDigiLockerLinked = student?.isDigiLockerLinked ?: true,
+                            hasConsentGiven = student?.hasConsentGiven ?: true,
+                            studentName = student?.name ?: "",
                             onConnectDigiLocker = { phoneOrAadhaar ->
                                 viewModel.connectDigiLocker(phoneOrAadhaar)
                             },
@@ -397,10 +406,15 @@ fun EkikritMainApp(
                     AppTab.REVIEWER_QUEUE -> {
                         ReviewerDeskScreen(
                             reviewItems = allReviewItems,
+                            currentUserRole = student?.role ?: "STUDENT",
+                            onSwitchToReviewer = {
+                                viewModel.switchToReviewerRole()
+                            },
                             onResolve = { id, approved, notes ->
                                 viewModel.resolveReviewItem(id, approved, notes)
                             },
                             onBackToStudentView = {
+                                viewModel.switchToStudentRole()
                                 viewModel.selectTab(AppTab.DASHBOARD)
                             }
                         )

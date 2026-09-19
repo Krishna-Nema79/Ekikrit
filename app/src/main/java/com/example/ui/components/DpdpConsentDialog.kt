@@ -88,7 +88,7 @@ fun DpdpConsentDialog(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Data is encrypted at rest, masked (Aadhaar/Bank), and never shared for non-scholarship purposes.",
+                        text = "Data is masked (Aadhaar/Bank), sandboxed in local app storage, and never shared for non-scholarship purposes.",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF059669)
                     )

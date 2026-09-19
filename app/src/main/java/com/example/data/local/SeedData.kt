@@ -342,19 +342,22 @@ object SeedData {
                 action = "DPDP Consent Registered",
                 actor = "Student (Birsa Munda Tirkey)",
                 details = "Granted explicit consent for DigiLocker multi-scheme document reuse and automated e-District verification.",
-                timestamp = "12 Aug 2026, 10:12 AM"
+                timestamp = "12 Aug 2026, 10:12 AM",
+                studentId = "STU_2026_01"
             ),
             AuditLogEntity(
                 action = "Verification Triggered",
                 actor = "System (Ekikrit Orchestrator)",
                 details = "Executed automated parallel verification across UIDAI, DigiLocker, AISHE, APAAR, UGC-NTA, e-District.",
-                timestamp = "12 Aug 2026, 10:14 AM"
+                timestamp = "12 Aug 2026, 10:14 AM",
+                studentId = "STU_2026_01"
             ),
             AuditLogEntity(
                 action = "Exception Auto-Routed",
                 actor = "System (Rule Engine)",
                 details = "e-District Income variance flagged. Route #REV_ITEM_01 queued to Verification Reviewer Desk without student block.",
-                timestamp = "12 Aug 2026, 10:16 AM"
+                timestamp = "12 Aug 2026, 10:16 AM",
+                studentId = "STU_2026_01"
             )
         )
         for (log in auditLogs) {
@@ -382,7 +385,8 @@ object SeedData {
                 bankAccountMasked = "Canara Bank (A/C **4821)",
                 ifscCode = "CNRB0002845",
                 isDigiLockerLinked = true,
-                hasConsentGiven = true
+                hasConsentGiven = true,
+                role = UserRole.STUDENT.name
             ),
             StudentEntity(
                 id = "STU_2026_02",
@@ -402,7 +406,8 @@ object SeedData {
                 bankAccountMasked = "State Bank of India (A/C **9023)",
                 ifscCode = "SBIN0001234",
                 isDigiLockerLinked = true,
-                hasConsentGiven = true
+                hasConsentGiven = true,
+                role = UserRole.STUDENT.name
             ),
             StudentEntity(
                 id = "STU_2026_03",
@@ -422,14 +427,36 @@ object SeedData {
                 bankAccountMasked = "Bank of India (A/C **3319)",
                 ifscCode = "BKID0004921",
                 isDigiLockerLinked = false,
-                hasConsentGiven = false
+                hasConsentGiven = false,
+                role = UserRole.STUDENT.name
+            ),
+            StudentEntity(
+                id = "REV_OFFICER_01",
+                name = "Dr. S. K. Mahapatra (Reviewing Officer)",
+                dob = "01-01-1980",
+                mobile = "+91 99999 11111",
+                state = "Odisha",
+                institutionId = "MOTA-DIST-04",
+                institutionName = "District Tribal Welfare Office, Sundargarh",
+                course = "Tribal Welfare Administration",
+                category = "Officer Desk",
+                pvtgCommunity = "",
+                preferredLanguage = "en",
+                apaarId = "",
+                annualIncome = 0.0,
+                aadhaarMasked = "XXXX-XXXX-0000",
+                bankAccountMasked = "",
+                ifscCode = "",
+                isDigiLockerLinked = true,
+                hasConsentGiven = true,
+                role = UserRole.REVIEWER.name
             )
         )
     }
 
     suspend fun ensurePresetStudents(db: EkikritDatabase) {
         val existing = db.studentDao().getAllStudents()
-        if (existing.size < 3) {
+        if (existing.size < 4) {
             val presets = getPresetStudents()
             for (p in presets) {
                 if (existing.none { it.id == p.id }) {

@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +23,8 @@ fun ReviewerDeskScreen(
     reviewItems: List<ReviewQueueEntity>,
     onResolve: (String, Boolean, String) -> Unit,
     onBackToStudentView: () -> Unit,
+    currentUserRole: String = "REVIEWER",
+    onSwitchToReviewer: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableStateOf("PENDING") }
@@ -33,6 +34,8 @@ fun ReviewerDeskScreen(
     } else {
         reviewItems.filter { it.status != "PENDING" }
     }
+
+    val isReviewer = currentUserRole == "REVIEWER"
 
     LazyColumn(
         modifier = modifier
@@ -126,6 +129,46 @@ fun ReviewerDeskScreen(
             Spacer(modifier = Modifier.height(14.dp))
         }
 
+        // Access Restriction Notice if viewing as normal student
+        if (!isReviewer) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
+                    border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFDC2626))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Reviewer Desk Access Restricted",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF991B1B)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "You are currently signed in with a STUDENT profile. Reviewer exception clearance and resolution actions are restricted to Tribal Welfare Officers.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF7F1D1D)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = onSwitchToReviewer,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Switch to Reviewing Officer Role (Demo)", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+            }
+        }
+
         // Filter Tabs
         item {
             Row(
@@ -199,6 +242,7 @@ fun ReviewerDeskScreen(
             items(filteredItems) { item ->
                 ReviewItemCard(
                     item = item,
+                    isReviewerRole = isReviewer,
                     onApprove = { note -> onResolve(item.id, true, note) },
                     onRequestResubmit = { note -> onResolve(item.id, false, note) },
                     onSwitchBack = onBackToStudentView
@@ -212,13 +256,14 @@ fun ReviewerDeskScreen(
 @Composable
 private fun ReviewItemCard(
     item: ReviewQueueEntity,
+    isReviewerRole: Boolean,
     onApprove: (String) -> Unit,
     onRequestResubmit: (String) -> Unit,
     onSwitchBack: () -> Unit
 ) {
     val isPending = item.status == "PENDING"
     var selectedNote by remember {
-        mutableStateOf("Approved under Rule 12: Income remains below statutory ₹2,50,000 ceiling.")
+        mutableStateOf("Approved: Income remains strictly below ₹2,50,000 statutory scheme ceiling.")
     }
 
     Card(
@@ -260,13 +305,15 @@ private fun ReviewItemCard(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
+
+            // Reviewer Privacy: Display case ID and disputed field instead of student full name / caste details
             Text(
-                text = "${item.studentName} (${item.category})",
+                text = "Case #${item.id.takeLast(10)} • Target App #${item.applicationId.takeLast(8)}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Target Scheme: ${item.schemeName}",
+                text = "Disputed Parameter: ${item.fieldName} | Scheme: ${item.schemeName}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
@@ -313,7 +360,7 @@ private fun ReviewItemCard(
                             modifier = Modifier.weight(1f)
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
-                                Text("e-District Registry:", style = MaterialTheme.typography.labelSmall, color = Color(0xFFD97706), fontWeight = FontWeight.SemiBold)
+                                Text("Registry Vault:", style = MaterialTheme.typography.labelSmall, color = Color(0xFFD97706), fontWeight = FontWeight.SemiBold)
                                 Text(item.retrievedValue, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
@@ -332,7 +379,7 @@ private fun ReviewItemCard(
                             Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Calculated Variance: +11.9% | Scheme Ceiling: ₹2.50L | Status: ELIGIBLE",
+                                text = "Calculated Variance: +11.9% | Ceiling: ₹2.50L | Status: TOLERANCE ELIGIBLE",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF059669)
@@ -381,7 +428,7 @@ private fun ReviewItemCard(
 
                 val presetNotes = listOf(
                     "Approved: Income remains strictly below ₹2.50L scheme ceiling.",
-                    "Approved: PVTG Priority (Birhor tribe) under Section 12 Rule."
+                    "Approved: Variance within 15% statutory tolerance limit under Section 12 Rule."
                 )
 
                 presetNotes.forEach { note ->
@@ -389,7 +436,8 @@ private fun ReviewItemCard(
                         selected = selectedNote == note,
                         onClick = { selectedNote = note },
                         label = { Text(note, style = MaterialTheme.typography.labelSmall) },
-                        modifier = Modifier.padding(vertical = 2.dp)
+                        modifier = Modifier.padding(vertical = 2.dp),
+                        enabled = isReviewerRole
                     )
                 }
 
@@ -404,21 +452,23 @@ private fun ReviewItemCard(
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .weight(1.3f)
-                            .testTag("approve_exception_btn")
+                            .testTag("approve_exception_btn"),
+                        enabled = isReviewerRole
                     ) {
                         Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Approve Exception")
+                        Text(if (isReviewerRole) "Approve Exception" else "Reviewer Role Required")
                     }
 
                     OutlinedButton(
-                        onClick = { onRequestResubmit("Clarification requested on income certificate.") },
+                        onClick = { onRequestResubmit("Clarification requested on income declaration.") },
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("request_resubmit_btn")
+                            .testTag("request_resubmit_btn"),
+                        enabled = isReviewerRole
                     ) {
-                        Text("Resubmit", color = Color(0xFFDC2626))
+                        Text("Resubmit", color = if (isReviewerRole) Color(0xFFDC2626) else Color.Gray)
                     }
                 }
             } else {

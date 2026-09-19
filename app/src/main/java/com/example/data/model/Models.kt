@@ -1,6 +1,7 @@
 package com.example.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class AppLanguage(val code: String, val displayName: String, val nativeName: String) {
@@ -24,6 +25,8 @@ enum class VerificationStatus {
     PENDING
 }
 
+enum class UserRole { STUDENT, REVIEWER }
+
 @Entity(tableName = "students")
 data class StudentEntity(
     @PrimaryKey val id: String = "STU_2026_01",
@@ -43,7 +46,9 @@ data class StudentEntity(
     val bankAccountMasked: String = "Canara Bank (A/C **4821)",
     val ifscCode: String = "CNRB0002845",
     val isDigiLockerLinked: Boolean = true,
-    val hasConsentGiven: Boolean = true
+    val hasConsentGiven: Boolean = true,
+    /** Local demo role only. Production authorization must be enforced by a backend. */
+    val role: String = UserRole.STUDENT.name
 )
 
 @Entity(tableName = "schemes")
@@ -59,7 +64,10 @@ data class SchemeEntity(
     val deadline: String = "31 Oct 2026"
 )
 
-@Entity(tableName = "applications")
+@Entity(
+    tableName = "applications",
+    indices = [Index(value = ["studentId", "schemeId", "academicYear"], unique = true)]
+)
 data class ApplicationEntity(
     @PrimaryKey val id: String,
     val studentId: String = "STU_2026_01",
@@ -74,6 +82,7 @@ data class ApplicationEntity(
     val hasDiscrepancy: Boolean = false,
     val sanctionedAmount: Double = 0.0,
     val estimatedDisbursementDays: Int = 0
+    , val academicYear: String = "2026-27"
 )
 
 @Entity(tableName = "documents")
@@ -142,7 +151,8 @@ data class AuditLogEntity(
     val action: String,
     val actor: String,
     val details: String,
-    val timestamp: String
+    val timestamp: String,
+    val studentId: String = ""
 )
 
 data class JagoMessage(
