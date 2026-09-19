@@ -30,19 +30,15 @@ class EkikritVerificationAndReviewerTest {
             id = "STU_2026_01",
             name = "Birsa Munda Tirkey",
             dob = "2004-05-18",
-            gender = "Male",
             aadhaarMasked = "XXXXXXXX1234",
-            phoneMasked = "XXXXXX9876",
-            email = "birsa.tirkey@nitrkl.ac.in",
+            mobile = "+91 98765 43210",
             category = "ST (Scheduled Tribe)",
             annualIncome = 160000.0,
             institutionName = "National Institute of Technology, Rourkela",
             institutionId = "AISHE-U-0355",
             course = "B.Tech Computer Science & Engineering",
-            yearOfStudy = 2,
             bankAccountMasked = "XXXXXXXX5678",
-            bankIfsc = "SBIN0002109",
-            bankName = "State Bank of India",
+            ifscCode = "SBIN0002109",
             apaarId = "APAAR-9876-5432-1098"
         )
 
@@ -60,19 +56,15 @@ class EkikritVerificationAndReviewerTest {
             id = "STU_INCOMPLETE",
             name = "Test Student",
             dob = "2005-01-01",
-            gender = "Male",
             aadhaarMasked = "", // missing Aadhaar
-            phoneMasked = "XXXXXX1234",
-            email = "test@example.com",
+            mobile = "+91 98765 12345",
             category = "ST",
             annualIncome = 100000.0,
             institutionName = "Govt College",
             institutionId = "AISHE-1234",
             course = "BA",
-            yearOfStudy = 1,
             bankAccountMasked = "XXXX1234",
-            bankIfsc = "SBIN0001234",
-            bankName = "SBI",
+            ifscCode = "SBIN0001234",
             apaarId = "APAAR-1234"
         )
 
@@ -88,19 +80,15 @@ class EkikritVerificationAndReviewerTest {
             id = "STU_2026_01",
             name = "Birsa Munda Tirkey",
             dob = "2004-05-18",
-            gender = "Male",
             aadhaarMasked = "XXXXXXXX1234",
-            phoneMasked = "XXXXXX9876",
-            email = "birsa.tirkey@nitrkl.ac.in",
+            mobile = "+91 98765 43210",
             category = "ST (Scheduled Tribe)",
             annualIncome = 160000.0,
             institutionName = "NIT Rourkela",
             institutionId = "AISHE-U-0355",
             course = "B.Tech CSE",
-            yearOfStudy = 2,
             bankAccountMasked = "XXXXXXXX5678",
-            bankIfsc = "SBIN0002109",
-            bankName = "SBI",
+            ifscCode = "SBIN0002109",
             apaarId = "APAAR-9876"
         )
 
@@ -120,19 +108,15 @@ class EkikritVerificationAndReviewerTest {
             id = "STU_2026_01",
             name = "Birsa Munda Tirkey",
             dob = "2004-05-18",
-            gender = "Male",
             aadhaarMasked = "XXXXXXXX1234",
-            phoneMasked = "XXXXXX9876",
-            email = "birsa.tirkey@nitrkl.ac.in",
+            mobile = "+91 98765 43210",
             category = "ST",
             annualIncome = 160000.0,
             institutionName = "NIT Rourkela",
             institutionId = "AISHE-U-0355",
             course = "B.Tech CSE",
-            yearOfStudy = 2,
             bankAccountMasked = "XXXXXXXX5678",
-            bankIfsc = "SBIN0002109",
-            bankName = "SBI",
+            ifscCode = "SBIN0002109",
             apaarId = "APAAR-9876"
         )
 
@@ -151,19 +135,15 @@ class EkikritVerificationAndReviewerTest {
             id = "STU_2026_01",
             name = "Birsa Munda Tirkey",
             dob = "2004-05-18",
-            gender = "Male",
             aadhaarMasked = "XXXXXXXX1234",
-            phoneMasked = "XXXXXX9876",
-            email = "birsa.tirkey@nitrkl.ac.in",
+            mobile = "+91 98765 43210",
             category = "ST",
             annualIncome = 160000.0,
             institutionName = "National Institute of Technology, Rourkela",
             institutionId = "AISHE-U-0355",
             course = "B.Tech Computer Science & Engineering",
-            yearOfStudy = 2,
             bankAccountMasked = "XXXXXXXX5678",
-            bankIfsc = "SBIN0002109",
-            bankName = "SBI",
+            ifscCode = "SBIN0002109",
             apaarId = "APAAR-9876-5432-1098"
         )
 
@@ -171,10 +151,12 @@ class EkikritVerificationAndReviewerTest {
             id = "APP_2026_01",
             studentId = "STU_2026_01",
             schemeId = "SCH_PMS",
+            schemeCode = "PMS-ST",
             schemeName = "Post-Matric Scholarship for ST Students",
             appliedDate = "2026-08-15",
+            lastUpdated = "2026-08-15",
             currentStage = "UNDER_VERIFICATION",
-            stageProgress = 0.5f,
+            statusText = "Multi-source Verification in progress",
             hasDiscrepancy = true,
             academicYear = "2025-26"
         )
@@ -214,31 +196,32 @@ class EkikritVerificationAndReviewerTest {
             id = "APP_2026_01",
             studentId = "STU_2026_01",
             schemeId = "SCH_PMS",
+            schemeCode = "PMS-ST",
             schemeName = "Post-Matric Scholarship for ST Students",
             appliedDate = "2026-08-15",
+            lastUpdated = "2026-08-15",
             currentStage = "UNDER_VERIFICATION",
-            stageProgress = 0.60f,
+            statusText = "Multi-source Verification in progress",
             hasDiscrepancy = true,
             pendingActionDesc = "e-District Income Certificate discrepancy (+11.9%). Waiting for Reviewer Desk exception clearance.",
             sanctionedAmount = 48500.0,
-            disbursedAmount = 0.0,
             academicYear = "2025-26"
         )
 
         val reviewItem = ReviewQueueEntity(
             id = "REV_2026_01",
+            verificationRecordId = "VER_EDIST_2026_01",
             applicationId = "APP_2026_01",
+            studentId = "STU_2026_01",
             studentName = "Birsa Munda Tirkey",
             schemeName = "Post-Matric Scholarship for ST Students",
             category = "ST (Scheduled Tribe)",
-            discrepancyType = "INCOME_VARIANCE",
+            sourceSystem = "e-District Revenue Portal",
+            fieldName = "Annual Household Income Certificate",
             declaredValue = "₹1,60,000 / annum",
             retrievedValue = "₹1,79,000 / annum",
-            variancePercent = "+11.9%",
-            toleranceLimit = "±15.0%",
-            recommendation = "APPROVE (Within statutory ceiling of ₹2.50L)",
+            mismatchReason = "Income variance detected (+11.9%).",
             status = "PENDING",
-            assignedOfficer = "Dr. Anita Hansda",
             createdAt = "2026-09-02 09:15"
         )
 
@@ -247,23 +230,21 @@ class EkikritVerificationAndReviewerTest {
         val officerNotes = "Tolerance accepted per SIH Ministry norms: ₹1.79L is within ₹2.50L ceiling."
 
         val resolvedReviewItem = reviewItem.copy(
-            status = if (isApproved) "RESOLVED_ACCEPTED" else "RESOLVED_REJECTED",
-            reviewedAt = "2026-09-19 11:00:00",
-            reviewerNotes = officerNotes
+            status = if (isApproved) "APPROVED" else "RESUBMIT",
+            resolvedAt = "2026-09-19 11:00:00",
+            resolutionNotes = officerNotes
         )
 
         val updatedApp = initialApp.copy(
             hasDiscrepancy = false,
             pendingActionDesc = null,
-            currentStage = "SANCTIONED",
-            stageProgress = 0.85f
+            currentStage = "SANCTIONED"
         )
 
-        assertEquals("RESOLVED_ACCEPTED", resolvedReviewItem.status)
+        assertEquals("APPROVED", resolvedReviewItem.status)
         assertEquals("SANCTIONED", updatedApp.currentStage)
         assertFalse(updatedApp.hasDiscrepancy)
         assertNull(updatedApp.pendingActionDesc)
-        assertEquals(0.85f, updatedApp.stageProgress)
     }
 
     @Test
@@ -272,10 +253,12 @@ class EkikritVerificationAndReviewerTest {
             id = "APP_2026_01",
             studentId = "STU_2026_01",
             schemeId = "SCH_PMS",
+            schemeCode = "PMS-ST",
             schemeName = "Post-Matric Scholarship for ST Students",
             appliedDate = "2026-08-15",
+            lastUpdated = "2026-08-15",
             currentStage = "UNDER_VERIFICATION",
-            stageProgress = 0.60f,
+            statusText = "Multi-source Verification in progress",
             hasDiscrepancy = true,
             pendingActionDesc = "Pending review",
             academicYear = "2025-26"

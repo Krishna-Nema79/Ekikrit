@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.HourglassBottom
@@ -17,35 +18,83 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.ApplicationEntity
 
+data class TimelineStageInfo(
+    val stageKey: String,
+    val title: String,
+    val subtitle: String,
+    val dateText: String,
+    val authority: String
+)
+
 @Composable
 fun ApplicationTimeline(
     application: ApplicationEntity,
     modifier: Modifier = Modifier
 ) {
+    // 6-Stage Comprehensive Institutional Lifecycle (SIH26238 Requirement 14)
     val stages = listOf(
-        Triple("Applied", "Application submitted via ${application.schemeCode} portal", application.appliedDate),
-        Triple("Verified", "Multi-source API verification (UIDAI, DigiLocker, AISHE)", if (application.currentStage != "SUBMITTED") application.lastUpdated else "Pending"),
-        Triple("Sanctioned", "Sanction Order issued by Ministry of Tribal Affairs", if (application.currentStage in listOf("SANCTIONED", "DISBURSED")) "Sanction MoTA/2026/09" else "Awaiting verification clearance"),
-        Triple("Disbursed", "Direct Benefit Transfer (DBT) via Aadhaar-linked rail", if (application.currentStage == "DISBURSED") "Credit confirmed via PFMS" else "Estimated ~${application.estimatedDisbursementDays} days post sanction")
+        TimelineStageInfo(
+            stageKey = "SUBMITTED",
+            title = "1. Application Submitted",
+            subtitle = "Direct 1-click submission with 5 DigiLocker digital credentials",
+            dateText = application.appliedDate,
+            authority = "Ekikrit Unified Rail"
+        ),
+        TimelineStageInfo(
+            stageKey = "INSTITUTE_VERIFICATION",
+            title = "2. Institute Verification",
+            subtitle = "AISHE & UDISE+ validation of bona fide student registration",
+            dateText = if (application.currentStage != "SUBMITTED") application.lastUpdated else "In Progress",
+            authority = "NIT Rourkela / Nodal Officer"
+        ),
+        TimelineStageInfo(
+            stageKey = "STATE_VERIFICATION",
+            title = "3. State Verification",
+            subtitle = "State Tribal Welfare e-District & Caste validation checks",
+            dateText = if (application.currentStage in listOf("STATE_VERIFICATION", "MINISTRY_REVIEW", "SANCTIONED", "DISBURSED")) application.lastUpdated else "Pending",
+            authority = "District Tribal Welfare Dept, Odisha"
+        ),
+        TimelineStageInfo(
+            stageKey = "MINISTRY_REVIEW",
+            title = "4. Ministry Review",
+            subtitle = "National Tribal Scholarship Division cross-system integrity ledger",
+            dateText = if (application.currentStage in listOf("MINISTRY_REVIEW", "SANCTIONED", "DISBURSED")) application.lastUpdated else "Awaiting State Clearance",
+            authority = "Ministry of Tribal Affairs (MoTA)"
+        ),
+        TimelineStageInfo(
+            stageKey = "SANCTIONED",
+            title = "5. Sanctioned",
+            subtitle = "Official Sanction Order generated for Direct Benefit Transfer",
+            dateText = if (application.currentStage in listOf("SANCTIONED", "DISBURSED")) "Sanction MoTA/2026/09" else "Pending Review Clearance",
+            authority = "Financial Advisor & DDO, MoTA"
+        ),
+        TimelineStageInfo(
+            stageKey = "DISBURSED",
+            title = "6. DBT / Disbursement",
+            subtitle = "Section 7 Aadhaar-linked payment credited directly to bank account",
+            dateText = if (application.currentStage == "DISBURSED") "Credit confirmed via PFMS" else "Est. ~${application.estimatedDisbursementDays} days post sanction",
+            authority = "Public Financial Management System (PFMS)"
+        )
     )
 
     val currentStepIndex = when (application.currentStage) {
         "SUBMITTED" -> 0
-        "UNDER_VERIFICATION" -> 1
-        "EXCEPTION_REVIEW" -> 1
-        "SANCTIONED" -> 2
-        "DISBURSED" -> 3
-        else -> -1
+        "INSTITUTE_VERIFICATION", "UNDER_VERIFICATION", "EXCEPTION_REVIEW" -> 1
+        "STATE_VERIFICATION" -> 2
+        "MINISTRY_REVIEW" -> 3
+        "SANCTIONED" -> 4
+        "DISBURSED" -> 5
+        else -> 0
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        stages.forEachIndexed { index, (title, description, dateText) ->
+        stages.forEachIndexed { index, stage ->
             val isCompleted = index < currentStepIndex || (index == currentStepIndex && application.currentStage == "DISBURSED")
             val isCurrent = index == currentStepIndex && application.currentStage != "DISBURSED"
             val isDiscrepancy = isCurrent && application.hasDiscrepancy
 
             Row(modifier = Modifier.fillMaxWidth()) {
-                // Stepper Column with Dot and Connecting Line
+                // Stepper Dot and Connecting Line
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.width(36.dp)
@@ -104,11 +153,11 @@ fun ApplicationTimeline(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // Step content
+                // Step Content Details
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = if (index < stages.size - 1) 20.dp else 0.dp)
+                        .weight(1f)
+                        .padding(bottom = if (index < stages.size - 1) 16.dp else 4.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -116,48 +165,66 @@ fun ApplicationTimeline(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
-                            color = if (isCurrent || isCompleted) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                            text = stage.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isCurrent || isCompleted) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isDiscrepancy) Color(0xFFD97706) else if (isCurrent || isCompleted) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (isDiscrepancy) {
-                            Surface(
-                                color = Color(0xFFFEF3C7),
-                                shape = CircleShape,
-                                modifier = Modifier.padding(start = 8.dp)
-                            ) {
-                                Text(
-                                    text = "Exception Reviewing",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF92400E),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        } else if (isCompleted) {
-                            Text(
-                                text = "Verified",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF059669)
-                            )
-                        }
+
+                        Text(
+                            text = stage.dateText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
 
                     Text(
-                        text = description,
+                        text = stage.subtitle,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Text(
-                        text = dateText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        Text(
+                            text = "Nodal: ${stage.authority}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    if (isDiscrepancy) {
+                        Surface(
+                            color = Color(0xFFD97706).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Non-blocking exception auto-routed to Reviewer Desk #4 (Variance within scheme limits).",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFD97706),
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

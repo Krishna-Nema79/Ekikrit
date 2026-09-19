@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer Shield / Emblem Base -->
+    <path
+        android:fillColor="#1E3A8A"
+        android:pathData="M54,14 L88,28 L88,58 C88,78 54,94 54,94 C54,94 20,78 20,58 L20,28 Z" />
+    <!-- Inner Accent Border -->
+    <path
+        android:strokeColor="#F59E0B"
+        android:strokeWidth="2.5"
+        android:pathData="M54,18 L84,30 L84,56 C84,74 54,88 54,88 C54,88 24,74 24,56 L24,30 Z" />
+    <!-- Graduation Cap / Scholar Icon -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M54,34 L76,44 L54,54 L32,44 Z" />
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M40,51 L40,62 C40,68 68,68 68,62 L68,51 L54,58 Z" />
+    <!-- Golden Sun Rays / Shining Star of Education -->
+    <path
+        android:fillColor="#60A5FA"
+        android:pathData="M54,66 L56.5,72 L62.5,72.5 L57.5,76 L59,82 L54,78.5 L49,82 L50.5,76 L45.5,72.5 L51.5,72 Z" />
+</vector>

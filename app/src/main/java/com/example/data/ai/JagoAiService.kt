@@ -99,10 +99,10 @@ class JagoAiService {
                 null
             }
         } catch (e: ClassNotFoundException) {
-            Log.d(TAG, "Firebase Vertex AI SDK not initialized. Using local contextual engine.")
+            try { Log.d(TAG, "Firebase Vertex AI SDK not initialized. Using local contextual engine.") } catch (_: Throwable) {}
             null
         } catch (e: Exception) {
-            Log.d(TAG, "Gemini live call unavailable (${e.message ?: "no config"}). Falling back to local engine.")
+            try { Log.d(TAG, "Gemini live call unavailable (${e.message ?: "no config"}). Falling back to local engine.") } catch (_: Throwable) {}
             null
         }
     }

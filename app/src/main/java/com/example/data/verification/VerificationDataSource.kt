@@ -71,7 +71,7 @@ class LocalDemoVerificationDataSource : VerificationDataSource {
     }
 
     override suspend fun verifyDigiLockerCredentials(student: StudentEntity): SourceVerificationResult {
-        val hasST = student.category.contains("ST", ignoreCase = true) || student.pvtgCommunity.isNotBlank()
+        val hasST = student.category.contains("ST", ignoreCase = true) || !student.pvtgCommunity.isNullOrBlank()
         return if (hasST) {
             SourceVerificationResult(
                 sourceSystem = "DigiLocker Wallet",

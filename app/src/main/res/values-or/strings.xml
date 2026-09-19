@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">ଏକୀକୃତ</string>
+    <string name="ministry_title">ଜନଜାତି ବ୍ୟାପାର ମନ୍ତ୍ରଣାଳୟ</string>
+    <string name="portal_subtitle">ଏକୀକୃତ ଜାତୀୟ ଜନଜାତି ଛାତ୍ରବୃତ୍ତି ପୋର୍ଟାଲ</string>
+    <string name="tab_home">ମୂଳ ପୃଷ୍ଠା</string>
+    <string name="tab_documents">ୱାଲେଟ୍</string>
+    <string name="tab_disbursement">ଡିବିଟି ଟ୍ରାକର୍</string>
+    <string name="tab_audit">ଅଡିଟ୍ ଲଗ୍</string>
+    <string name="tab_jago">ଜାଗୋ AI</string>
+    <string name="welcome_back">ସ୍ୱାଗତ</string>
+    <string name="stat_disbursed">ଡିବିଟି ପ୍ରଦାନ</string>
+    <string name="stat_in_pipeline">ଯାଞ୍ଚ ପ୍ରକ୍ରିୟା</string>
+    <string name="stat_schemes_active">ଜନଜାତି ଯୋଜନା</string>
+    <string name="switch_profile">ପ୍ରୋଫାଇଲ୍ ପରିବର୍ତ୍ତନ</string>
+    <string name="officer_desk">ଅଧିକାରୀ ସମୀକ୍ଷା</string>
+    <string name="grant_dpdp_consent">DPDP ସମ୍ମତି</string>
+</resources>

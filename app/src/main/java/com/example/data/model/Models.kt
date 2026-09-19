@@ -13,9 +13,11 @@ enum class AppLanguage(val code: String, val displayName: String, val nativeName
 
 enum class ApplicationStage(val displayName: String, val stepIndex: Int) {
     SUBMITTED("Applied", 0),
-    VERIFICATION("Under Verification", 1),
-    SANCTIONED("Sanctioned", 2),
-    DISBURSED("Disbursed", 3)
+    INSTITUTE_VERIFICATION("Institute Verification", 1),
+    STATE_VERIFICATION("State Verification", 2),
+    MINISTRY_REVIEW("Ministry Review", 3),
+    SANCTIONED("Sanctioned", 4),
+    DISBURSED("Disbursed", 5)
 }
 
 enum class VerificationStatus {
@@ -27,6 +29,13 @@ enum class VerificationStatus {
 
 enum class UserRole { STUDENT, REVIEWER }
 
+enum class SyncState {
+    SYNCED,
+    PENDING_SYNC,
+    LOCAL_DRAFT,
+    FAILED
+}
+
 @Entity(tableName = "students")
 data class StudentEntity(
     @PrimaryKey val id: String = "STU_2026_01",
@@ -37,8 +46,9 @@ data class StudentEntity(
     val institutionId: String = "AISHE-U-0355",
     val institutionName: String = "National Institute of Technology, Rourkela",
     val course: String = "B.Tech Computer Science & Engineering",
+    val academicLevel: String = "UNDERGRADUATE", // SECONDARY, HIGHER_SECONDARY, UNDERGRADUATE, POSTGRADUATE, PHD
     val category: String = "ST (PVTG - Birhor)",
-    val pvtgCommunity: String = "Birhor",
+    val pvtgCommunity: String? = "Birhor",
     val preferredLanguage: String = "en",
     val apaarId: String = "APAAR-8839-4021-9920",
     val annualIncome: Double = 210000.0,
@@ -48,7 +58,8 @@ data class StudentEntity(
     val isDigiLockerLinked: Boolean = true,
     val hasConsentGiven: Boolean = true,
     /** Local demo role only. Production authorization must be enforced by a backend. */
-    val role: String = UserRole.STUDENT.name
+    val role: String = UserRole.STUDENT.name,
+    val qualificationDetails: String = "JEE Main 94.8 Percentile, ST Category Rank 842"
 )
 
 @Entity(tableName = "schemes")
@@ -61,7 +72,9 @@ data class SchemeEntity(
     val maxAmount: String,
     val eligibilityRules: String,
     val description: String,
-    val deadline: String = "31 Oct 2026"
+    val deadline: String = "31 Oct 2026",
+    val targetLevel: String = "ALL", // SECONDARY, POST_MATRIC, HIGHER_EDUCATION, OVERSEAS, PREMIER_INSTITUTE
+    val incomeCeiling: Double = 250000.0
 )
 
 @Entity(
@@ -74,22 +87,23 @@ data class ApplicationEntity(
     val schemeId: String,
     val schemeCode: String,
     val schemeName: String,
-    val currentStage: String, // SUBMITTED, VERIFICATION, SANCTIONED, DISBURSED
+    val currentStage: String, // SUBMITTED, INSTITUTE_VERIFICATION, STATE_VERIFICATION, MINISTRY_REVIEW, SANCTIONED, DISBURSED
     val statusText: String,
     val appliedDate: String,
     val lastUpdated: String,
     val pendingActionDesc: String? = null,
     val hasDiscrepancy: Boolean = false,
     val sanctionedAmount: Double = 0.0,
-    val estimatedDisbursementDays: Int = 0
-    , val academicYear: String = "2026-27"
+    val estimatedDisbursementDays: Int = 0,
+    val academicYear: String = "2026-27",
+    val syncState: String = "SYNCED" // SYNCED, PENDING_SYNC, LOCAL_DRAFT
 )
 
 @Entity(tableName = "documents")
 data class DocumentEntity(
     @PrimaryKey val id: String,
     val studentId: String = "STU_2026_01",
-    val type: String, // Aadhaar, Caste, Income, Marksheet, Domicile
+    val type: String, // Aadhaar, Caste, Income, Marksheet, Domicile, APAAR
     val title: String,
     val docNumberMasked: String,
     val source: String = "DigiLocker",
@@ -104,13 +118,14 @@ data class VerificationRecordEntity(
     @PrimaryKey val id: String,
     val applicationId: String,
     val schemeId: String,
-    val sourceSystem: String, // UIDAI, DigiLocker, AISHE / UDISE+, APAAR, UGC-NTA, e-District
+    val sourceSystem: String, // UIDAI, DigiLocker, AISHE, APAAR, UDISE+, UGC-NTA, e-District
     val fieldChecked: String,
     val declaredValue: String,
     val retrievedValue: String,
     val status: String, // VERIFIED, MISMATCH, RESOLVED, PENDING
     val timestamp: String,
-    val notes: String
+    val notes: String,
+    val isBlocking: Boolean = false
 )
 
 @Entity(tableName = "review_queue")
@@ -118,6 +133,7 @@ data class ReviewQueueEntity(
     @PrimaryKey val id: String,
     val verificationRecordId: String,
     val applicationId: String,
+    val studentId: String = "STU_2026_01",
     val studentName: String,
     val category: String,
     val schemeName: String,
@@ -135,6 +151,7 @@ data class ReviewQueueEntity(
 @Entity(tableName = "disbursements")
 data class DisbursementEntity(
     @PrimaryKey val id: String,
+    val studentId: String = "STU_2026_01",
     val applicationId: String,
     val schemeName: String,
     val amount: Double,
@@ -143,6 +160,17 @@ data class DisbursementEntity(
     val bankName: String,
     val accountMasked: String,
     val status: String = "SUCCESS"
+)
+
+@Entity(tableName = "notifications")
+data class NotificationEntity(
+    @PrimaryKey val id: String,
+    val studentId: String = "STU_2026_01",
+    val title: String,
+    val message: String,
+    val type: String, // VERIFICATION, REVIEW, SANCTION, PAYMENT, SCHEME
+    val timestamp: String,
+    val isRead: Boolean = false
 )
 
 @Entity(tableName = "audit_logs")
@@ -155,10 +183,32 @@ data class AuditLogEntity(
     val studentId: String = ""
 )
 
+@Entity(tableName = "application_drafts")
+data class ApplicationDraftEntity(
+    @PrimaryKey val id: String,
+    val studentId: String,
+    val schemeId: String,
+    val currentStep: Int = 0,
+    val declaredIncome: Double = 0.0,
+    val selectedDocIds: String = "",
+    val lastSavedTimestamp: String = "",
+    val isPendingSync: Boolean = false
+)
+
 data class JagoMessage(
     val id: String = java.util.UUID.randomUUID().toString(),
     val sender: String, // "USER" or "JAGO"
     val content: String,
     val timestamp: String = "Just now",
     val quickChips: List<String> = emptyList()
+)
+
+data class ScholarshipMatch(
+    val scheme: SchemeEntity,
+    val whyMatched: String,
+    val eligibilityStatus: String, // ELIGIBLE, NEEDS_REVIEW, NOT_ELIGIBLE
+    val matchPercentage: Int,
+    val requiredDocuments: List<String>,
+    val reusableDocuments: List<String>,
+    val nextAction: String
 )

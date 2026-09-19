@@ -26,19 +26,15 @@ class EkikritEligibilityAndOwnershipTest {
             id = "STU_2026_02",
             name = "Mangal Oraon",
             dob = "2010-08-22",
-            gender = "Male",
             aadhaarMasked = "XXXXXXXX3456",
-            phoneMasked = "XXXXXX8765",
-            email = "mangal.oraon@jharkhand.gov.in",
+            mobile = "+91 98765 43210",
             category = "ST (Scheduled Tribe)",
             annualIncome = 85000.0,
             institutionName = "Netarhat Residential School, Latehar",
             institutionId = "UDISE-201901001",
             course = "Class X (Secondary)",
-            yearOfStudy = 10,
             bankAccountMasked = "XXXXXXXX7890",
-            bankIfsc = "BKID0004921",
-            bankName = "Bank of India",
+            ifscCode = "BKID0004921",
             apaarId = "APAAR-3456-7890-1234"
         )
 
@@ -69,19 +65,15 @@ class EkikritEligibilityAndOwnershipTest {
             id = "STU_2026_01",
             name = "Birsa Munda Tirkey",
             dob = "2004-05-18",
-            gender = "Male",
             aadhaarMasked = "XXXXXXXX1234",
-            phoneMasked = "XXXXXX9876",
-            email = "birsa.tirkey@nitrkl.ac.in",
+            mobile = "+91 98765 43210",
             category = "ST (Scheduled Tribe)",
             annualIncome = 160000.0,
             institutionName = "National Institute of Technology, Rourkela",
             institutionId = "AISHE-U-0355",
             course = "B.Tech Computer Science & Engineering",
-            yearOfStudy = 2,
             bankAccountMasked = "XXXXXXXX5678",
-            bankIfsc = "SBIN0002109",
-            bankName = "State Bank of India",
+            ifscCode = "SBIN0002109",
             apaarId = "APAAR-9876-5432-1098"
         )
 
@@ -91,10 +83,12 @@ class EkikritEligibilityAndOwnershipTest {
                 id = "APP_2026_01",
                 studentId = "STU_2026_01",
                 schemeId = "SCH_PMS",
+                schemeCode = "PMS-ST",
                 schemeName = "Post-Matric Scholarship for ST Students",
                 appliedDate = "2026-08-15",
+                lastUpdated = "2026-08-15",
                 currentStage = "UNDER_VERIFICATION",
-                stageProgress = 0.5f,
+                statusText = "Multi-source Verification in progress",
                 academicYear = "2025-26"
             )
         )
@@ -114,19 +108,15 @@ class EkikritEligibilityAndOwnershipTest {
             id = "STU_TEST",
             name = "Test ST Student",
             dob = "2003-01-01",
-            gender = "Female",
             aadhaarMasked = "XXXXXXXX9999",
-            phoneMasked = "XXXXXX1111",
-            email = "test@nitrkl.ac.in",
+            mobile = "+91 98765 43210",
             category = "ST",
             annualIncome = 350000.0, // Exceeds ₹2.50L ceiling, but below ₹6.00L ceiling
             institutionName = "National Institute of Technology, Rourkela",
             institutionId = "AISHE-U-0355",
             course = "B.Tech Electrical",
-            yearOfStudy = 3,
             bankAccountMasked = "XXXXXXXX1111",
-            bankIfsc = "SBIN0001234",
-            bankName = "SBI",
+            ifscCode = "SBIN0001234",
             apaarId = "APAAR-1111"
         )
 
@@ -148,20 +138,16 @@ class EkikritEligibilityAndOwnershipTest {
             id = "STU_2026_03",
             name = "Sunita Soren",
             dob = "2003-11-14",
-            gender = "Female",
             aadhaarMasked = "XXXXXXXX7890",
-            phoneMasked = "XXXXXX6543",
-            email = "sunita.soren@iitbbs.ac.in",
+            mobile = "+91 98765 43210",
             category = "ST (Santhal)",
             pvtgCommunity = "Santhal PVTG",
             annualIncome = 120000.0,
             institutionName = "Indian Institute of Technology, Bhubaneswar",
             institutionId = "AISHE-U-0356",
             course = "B.Tech Mechanical Engineering",
-            yearOfStudy = 3,
             bankAccountMasked = "XXXXXXXX2468",
-            bankIfsc = "PUNB0123400",
-            bankName = "Punjab National Bank",
+            ifscCode = "PUNB0123400",
             apaarId = "APAAR-7890-1234-5678"
         )
 
@@ -179,9 +165,12 @@ class EkikritEligibilityAndOwnershipTest {
                 id = "APP_2026_01",
                 studentId = "STU_2026_01",
                 schemeId = "SCH_TOPCLASS",
+                schemeCode = "TOPCLASS-ST",
                 schemeName = "Top Class Education Scheme for ST Students",
                 appliedDate = "2026-09-01",
+                lastUpdated = "2026-09-01",
                 currentStage = "SUBMITTED",
+                statusText = "Submitted",
                 academicYear = "2025-26"
             )
         )
@@ -212,19 +201,15 @@ class EkikritEligibilityAndOwnershipTest {
             id = "STU_2026_01",
             name = "Birsa Munda Tirkey",
             dob = "2004-05-18",
-            gender = "Male",
             aadhaarMasked = "XXXXXXXX1234",
-            phoneMasked = "XXXXXX9876",
-            email = "birsa.tirkey@nitrkl.ac.in",
+            mobile = "+91 98765 43210",
             category = "ST",
             annualIncome = 160000.0,
             institutionName = "NIT Rourkela",
             institutionId = "AISHE-U-0355",
             course = "B.Tech CSE",
-            yearOfStudy = 2,
             bankAccountMasked = "XXXXXXXX5678",
-            bankIfsc = "SBIN0002109",
-            bankName = "SBI",
+            ifscCode = "SBIN0002109",
             apaarId = "APAAR-9876",
             hasConsentGiven = false // Revoked DPDP consent
         )
@@ -245,19 +230,15 @@ class EkikritEligibilityAndOwnershipTest {
             id = "STU_2026_01",
             name = "Birsa Munda Tirkey",
             dob = "2004-05-18",
-            gender = "Male",
             aadhaarMasked = "XXXXXXXX1234",
-            phoneMasked = "XXXXXX9876",
-            email = "birsa.tirkey@nitrkl.ac.in",
+            mobile = "+91 98765 43210",
             category = "ST (Scheduled Tribe)",
             annualIncome = 160000.0,
             institutionName = "NIT Rourkela",
             institutionId = "AISHE-U-0355",
             course = "B.Tech CSE",
-            yearOfStudy = 2,
             bankAccountMasked = "XXXXXXXX5678",
-            bankIfsc = "SBIN0002109",
-            bankName = "SBI",
+            ifscCode = "SBIN0002109",
             apaarId = "APAAR-9876"
         )
 
@@ -265,10 +246,12 @@ class EkikritEligibilityAndOwnershipTest {
             id = "APP_2026_01",
             studentId = "STU_2026_01",
             schemeId = "SCH_PMS",
+            schemeCode = "PMS-ST",
             schemeName = "Post-Matric Scholarship",
             appliedDate = "2026-08-15",
+            lastUpdated = "2026-08-15",
             currentStage = "UNDER_VERIFICATION",
-            stageProgress = 0.6f,
+            statusText = "Multi-source Verification in progress",
             hasDiscrepancy = true,
             academicYear = "2025-26"
         )

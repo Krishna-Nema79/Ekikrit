@@ -13,23 +13,27 @@ import kotlinx.coroutines.launch
 
 enum class AppTab(val title: String) {
     DASHBOARD("Dashboard"),
-    SCHEMES("Schemes (5)"),
+    SCHEMES("5 Schemes"),
     DOCUMENTS("DigiLocker Wallet"),
     DISBURSEMENT("DBT Payments"),
     REVIEWER_QUEUE("Reviewer Desk")
 }
 
+enum class UserMode {
+    STUDENT,
+    OFFICER
+}
+
 class EkikritViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: EkikritRepository
+    val repository: EkikritRepository
 
     init {
         val db = EkikritDatabase.getDatabase(application, viewModelScope)
-        repository = EkikritRepository(db)
-        viewModelScope.launch {
-            repository.ensurePresetStudents()
-        }
+        repository = EkikritRepository(db, viewModelScope)
     }
+
+    val activeStudentId = repository.activeStudentId
 
     val student = repository.studentFlow.stateIn(
         scope = viewModelScope,
@@ -67,13 +71,13 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         initialValue = emptyList()
     )
 
-    val pendingReviewItems = repository.pendingReviewItemsFlow.stateIn(
+    val notifications = repository.notificationsFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    val allReviewItems = repository.allReviewItemsFlow.stateIn(
+    val reviewQueue = repository.reviewQueueFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
@@ -93,6 +97,17 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         initialValue = null
     )
 
+    val scholarshipMatch = repository.scholarshipMatchFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = null
+    )
+
+    val isOfflineMode = repository.isOfflineMode
+
+    private val _userMode = MutableStateFlow(UserMode.STUDENT)
+    val userMode: StateFlow<UserMode> = _userMode.asStateFlow()
+
     private val _currentTab = MutableStateFlow(AppTab.DASHBOARD)
     val currentTab: StateFlow<AppTab> = _currentTab.asStateFlow()
 
@@ -105,14 +120,14 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
     private val _isJagoChatOpen = MutableStateFlow(false)
     val isJagoChatOpen: StateFlow<Boolean> = _isJagoChatOpen.asStateFlow()
 
-    private val _isLoggedIn = MutableStateFlow(true)
-    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
-
     private val _showConsentDialog = MutableStateFlow(false)
     val showConsentDialog: StateFlow<Boolean> = _showConsentDialog.asStateFlow()
 
     private val _showLoginSheet = MutableStateFlow(false)
     val showLoginSheet: StateFlow<Boolean> = _showLoginSheet.asStateFlow()
+
+    private val _showNotificationsSheet = MutableStateFlow(false)
+    val showNotificationsSheet: StateFlow<Boolean> = _showNotificationsSheet.asStateFlow()
 
     private val _isSimulatingVerification = MutableStateFlow(false)
     val isSimulatingVerification: StateFlow<Boolean> = _isSimulatingVerification.asStateFlow()
@@ -124,8 +139,8 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         listOf(
             JagoMessage(
                 sender = "JAGO",
-                content = "Johar! I am JAGO, your unified tribal scholarship assistant. How can I assist you with your tribal schemes or DigiLocker documents today?",
-                quickChips = listOf("What's pending on my application?", "Why was my income flagged?", "Am I eligible for any scheme?", "When will amount disburse?")
+                content = "Johar! I am JAGO, your unified tribal scholarship assistant. How can I assist you with your 5 tribal schemes, multi-system verification, or DigiLocker credentials today?",
+                quickChips = listOf("What is my application status?", "Why is my income flagged?", "Am I eligible for any scheme?", "When will amount disburse?")
             )
         )
     )
@@ -133,6 +148,15 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
 
     fun selectTab(tab: AppTab) {
         _currentTab.value = tab
+    }
+
+    fun setUserMode(mode: UserMode) {
+        _userMode.value = mode
+        if (mode == UserMode.OFFICER) {
+            _currentTab.value = AppTab.REVIEWER_QUEUE
+        } else if (_currentTab.value == AppTab.REVIEWER_QUEUE) {
+            _currentTab.value = AppTab.DASHBOARD
+        }
     }
 
     fun openApplicationDetail(appId: String) {
@@ -155,6 +179,15 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         _showLoginSheet.value = show
     }
 
+    fun toggleNotificationsSheet(show: Boolean) {
+        _showNotificationsSheet.value = show
+    }
+
+    fun toggleOfflineMode(offline: Boolean) {
+        repository.setOfflineMode(offline)
+        _userNotice.value = if (offline) "Offline mode simulated. Changes will queue locally." else "Back online! Syncing queued applications with national servers."
+    }
+
     fun switchStudent(studentId: String) {
         viewModelScope.launch {
             try {
@@ -169,15 +202,25 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
 
     fun switchToReviewerRole() {
         viewModelScope.launch {
-            repository.switchStudent("REV_OFFICER_01")
-            _userNotice.value = "Switched to Reviewer Officer Desk."
+            try {
+                repository.switchStudent("REV_OFFICER_01")
+                _userMode.value = UserMode.OFFICER
+                _userNotice.value = "Switched to Reviewer Officer Desk."
+            } catch (e: Exception) {
+                _userNotice.value = e.message ?: "Role switch denied."
+            }
         }
     }
 
     fun switchToStudentRole() {
         viewModelScope.launch {
-            repository.switchStudent("STU_2026_01")
-            _userNotice.value = "Switched to Beneficiary Student View."
+            try {
+                repository.switchStudent("STU_2026_01")
+                _userMode.value = UserMode.STUDENT
+                _userNotice.value = "Switched to Beneficiary Student View."
+            } catch (e: Exception) {
+                _userNotice.value = e.message ?: "Role switch denied."
+            }
         }
     }
 
@@ -197,17 +240,11 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         _selectedLanguage.value = lang
         viewModelScope.launch {
             repository.setLanguage(lang.code)
-            val welcomeMessage = repository.generateJagoResponse("hi", lang.code)
-            _jagoMessages.value = _jagoMessages.value + welcomeMessage
         }
     }
 
     fun setConsent(granted: Boolean) {
-        viewModelScope.launch {
-            repository.setConsentGiven(granted)
-            _showConsentDialog.value = false
-            _userNotice.value = if (granted) "DigiLocker consent updated with DPDP Act compliance." else "DigiLocker consent revoked."
-        }
+        updateStudentConsent(granted)
     }
 
     fun clearNotice() {
@@ -218,9 +255,9 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 _isSimulatingVerification.value = true
-                repository.triggerLiveMockVerification(appId)
+                repository.runSevenSourceVerification(appId)
                 _isSimulatingVerification.value = false
-                _userNotice.value = "Multi-source verification executed."
+                _userNotice.value = "Multi-source verification executed across 7 national registries."
             } catch (e: Exception) {
                 _isSimulatingVerification.value = false
                 _userNotice.value = e.message ?: "Verification failed."
@@ -233,7 +270,7 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
             try {
                 repository.resolveReviewItem(itemId, isApproved, notes)
                 _userNotice.value = if (isApproved) {
-                    "Exception approved! Application promoted to SANCTIONED."
+                    "Verification issue resolved. Application moved to State Verification."
                 } else {
                     "Clarification requested from student."
                 }
@@ -245,14 +282,25 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun applyForUnreachedScheme(schemeId: String) {
+    fun applyForScheme(schemeId: String, declaredIncome: Double? = null) {
         viewModelScope.launch {
             try {
-                repository.applyForUnreachedScheme(schemeId)
-                _userNotice.value = "Applied successfully with 1-click DigiLocker credentials! No paper re-upload required."
+                val (success, msg) = repository.applyForScheme(schemeId, declaredIncome)
+                _userNotice.value = msg
             } catch (e: Exception) {
                 _userNotice.value = e.message ?: "Application failed."
             }
+        }
+    }
+
+    fun applyForUnreachedScheme(schemeId: String) {
+        applyForScheme(schemeId)
+    }
+
+    fun updateStudentConsent(granted: Boolean) {
+        viewModelScope.launch {
+            repository.updateStudentConsent(repository.activeStudentId.value, granted)
+            _userNotice.value = if (granted) "DPDP Act 2023 consent granted." else "DPDP Act 2023 consent revoked."
         }
     }
 
@@ -268,6 +316,10 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun connectDigiLocker(mobileOrAadhaar: String) {
+        syncDigiLocker(mobileOrAadhaar)
+    }
+
+    fun syncDigiLocker(mobileOrAadhaar: String) {
         viewModelScope.launch {
             try {
                 repository.syncDigiLockerFull(mobileOrAadhaar)
@@ -275,6 +327,25 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 _userNotice.value = e.message ?: "Failed to connect DigiLocker."
             }
+        }
+    }
+
+    fun markNotificationAsRead(notifId: String) {
+        viewModelScope.launch {
+            repository.markNotificationAsRead(notifId)
+        }
+    }
+
+    fun markAllNotificationsAsRead() {
+        viewModelScope.launch {
+            repository.markAllNotificationsAsRead()
+        }
+    }
+
+    fun resetDemoData() {
+        viewModelScope.launch {
+            repository.resetAllDemoData()
+            _userNotice.value = "Demo database reset to clean default state."
         }
     }
 
@@ -286,12 +357,17 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         _jagoMessages.value = _jagoMessages.value + userMsg
 
         viewModelScope.launch {
-            val response = repository.generateJagoResponse(query, _selectedLanguage.value.code)
-            _jagoMessages.value = _jagoMessages.value + response
+            val responseText = repository.generateJagoResponse(query)
+            val jagoResponse = JagoMessage(
+                sender = "JAGO",
+                content = responseText,
+                quickChips = listOf("Check my DBT payment", "Explain income tolerance", "View 5 Schemes")
+            )
+            _jagoMessages.value = _jagoMessages.value + jagoResponse
         }
     }
 
-    fun getVerificationRecordsForApp(appId: String): Flow<List<VerificationRecordEntity>> {
-        return repository.getVerificationRecordsFlow(appId)
+    fun getVerificationRecordsForAppFlow(appId: String): Flow<List<VerificationRecordEntity>> {
+        return repository.getVerificationRecordsForAppFlow(appId)
     }
 }

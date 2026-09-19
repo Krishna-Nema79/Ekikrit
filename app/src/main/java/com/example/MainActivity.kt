@@ -29,6 +29,7 @@ import com.example.ui.util.LocalAppStrings
 import com.example.ui.util.getAppStrings
 import com.example.ui.viewmodel.AppTab
 import com.example.ui.viewmodel.EkikritViewModel
+import com.example.ui.viewmodel.UserMode
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,10 +53,13 @@ fun EkikritMainApp(
     val applications by viewModel.applications.collectAsStateWithLifecycle()
     val documents by viewModel.documents.collectAsStateWithLifecycle()
     val disbursements by viewModel.disbursements.collectAsStateWithLifecycle()
-    val allReviewItems by viewModel.allReviewItems.collectAsStateWithLifecycle()
+    val reviewQueue by viewModel.reviewQueue.collectAsStateWithLifecycle()
+    val notifications by viewModel.notifications.collectAsStateWithLifecycle()
     val auditLogs by viewModel.auditLogs.collectAsStateWithLifecycle()
     val allStudents by viewModel.allStudents.collectAsStateWithLifecycle()
     val topUnreachedScheme by viewModel.topUnreachedScheme.collectAsStateWithLifecycle()
+    val isOfflineMode by viewModel.isOfflineMode.collectAsStateWithLifecycle()
+    val userMode by viewModel.userMode.collectAsStateWithLifecycle()
 
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val selectedAppId by viewModel.selectedApplicationId.collectAsStateWithLifecycle()
@@ -63,14 +67,20 @@ fun EkikritMainApp(
     val isJagoOpen by viewModel.isJagoChatOpen.collectAsStateWithLifecycle()
     val showConsentDialog by viewModel.showConsentDialog.collectAsStateWithLifecycle()
     val showLoginSheet by viewModel.showLoginSheet.collectAsStateWithLifecycle()
+    val showNotificationsSheet by viewModel.showNotificationsSheet.collectAsStateWithLifecycle()
     val isSimulating by viewModel.isSimulatingVerification.collectAsStateWithLifecycle()
     val userNotice by viewModel.userNotice.collectAsStateWithLifecycle()
     val jagoMessages by viewModel.jagoMessages.collectAsStateWithLifecycle()
+    val scholarshipMatch by viewModel.scholarshipMatch.collectAsStateWithLifecycle()
 
     val strings = getAppStrings(selectedLanguage)
 
     val snackbarHostState = remember { SnackbarHostState() }
-    var showIntroTour by remember { mutableStateOf(true) } // Shows on start for all users
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sharedPrefs = remember(context) { context.getSharedPreferences("ekikrit_prefs", android.content.Context.MODE_PRIVATE) }
+    var showIntroTour by remember {
+        mutableStateOf(!sharedPrefs.getBoolean("has_completed_onboarding", false))
+    }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showAuditModal by remember { mutableStateOf(false) }
@@ -84,191 +94,257 @@ fun EkikritMainApp(
         }
     }
 
+    val unreadNotifCount = remember(notifications) {
+        notifications.count { !it.isRead }
+    }
+
+    val pendingReviewCount = remember(reviewQueue) {
+        reviewQueue.count { it.status == "PENDING" }
+    }
+
     CompositionLocalProvider(LocalAppStrings provides strings) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             topBar = {
-                TopAppBar(
-                    title = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        ) {
-                            Surface(
-                                color = Color(0xFFD97706),
-                                shape = CircleShape,
-                                modifier = Modifier.size(34.dp)
+                Column {
+                    TopAppBar(
+                        title = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(vertical = 4.dp)
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = "ए",
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f, fill = false)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = strings.appTitle,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Surface(
-                                        color = Color(0xFF059669).copy(alpha = 0.15f),
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
+                                Surface(
+                                    color = Color(0xFFD97706),
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
                                         Text(
-                                            text = "SIH26238",
-                                            style = MaterialTheme.typography.labelSmall,
+                                            text = "ए",
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF059669),
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.titleMedium
                                         )
                                     }
                                 }
-                                Text(
-                                    text = strings.ministryName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    },
-                    actions = {
-                        // 1. App Intro Tour Button
-                        IconButton(
-                            onClick = { showIntroTour = true },
-                            modifier = Modifier.testTag("app_intro_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.HelpOutline,
-                                contentDescription = strings.appGuide,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        // 2. Demo Mode Switcher: Jump between Student & Reviewer Desk
-                        val isAtReviewerDesk = currentTab == AppTab.REVIEWER_QUEUE
-                        Button(
-                            onClick = {
-                                if (isAtReviewerDesk) {
-                                    viewModel.switchToStudentRole()
-                                    viewModel.selectTab(AppTab.DASHBOARD)
-                                } else {
-                                    viewModel.switchToReviewerRole()
-                                    viewModel.selectTab(AppTab.REVIEWER_QUEUE)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = strings.appTitle,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            color = Color(0xFF059669).copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "SIH26238",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF059669),
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = if (userMode == UserMode.OFFICER) "District Tribal Welfare Officer Desk" else strings.ministryName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isAtReviewerDesk) Color(0xFF059669) else Color(0xFFD97706)
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier
-                                .padding(end = 4.dp)
-                                .testTag("demo_switcher_btn")
-                        ) {
-                            Icon(
-                                imageVector = if (isAtReviewerDesk) Icons.Default.School else Icons.Default.AdminPanelSettings,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.White
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isAtReviewerDesk) strings.studentMode else strings.reviewerDeskMode,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-
-                        // 3. Overflow Menu for Security, Audit, and Language
-                        Box {
+                            }
+                        },
+                        actions = {
+                            // 1. Notification Bell
                             IconButton(
-                                onClick = { showMoreMenu = true },
-                                modifier = Modifier.testTag("top_app_bar_more_menu")
+                                onClick = { viewModel.toggleNotificationsSheet(true) },
+                                modifier = Modifier.testTag("notifications_bell_btn")
                             ) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "More Options")
+                                BadgedBox(
+                                    badge = {
+                                        if (unreadNotifCount > 0) {
+                                            Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                                                Text("$unreadNotifCount")
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Notifications,
+                                        contentDescription = "Notifications",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
 
-                            DropdownMenu(
-                                expanded = showMoreMenu,
-                                onDismissRequest = { showMoreMenu = false }
+                            // 2. Officer / Student Mode Switcher
+                            Button(
+                                onClick = {
+                                    if (userMode == UserMode.STUDENT) {
+                                        viewModel.setUserMode(UserMode.OFFICER)
+                                        viewModel.switchToReviewerRole()
+                                        viewModel.selectTab(AppTab.REVIEWER_QUEUE)
+                                    } else {
+                                        viewModel.setUserMode(UserMode.STUDENT)
+                                        viewModel.switchToStudentRole()
+                                        viewModel.selectTab(AppTab.DASHBOARD)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (userMode == UserMode.OFFICER) Color(0xFF059669) else Color(0xFFD97706)
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier
+                                    .padding(end = 4.dp)
+                                    .testTag("demo_switcher_btn")
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text("Switch User / Login") },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.SwitchAccount, contentDescription = null, tint = Color(0xFFD97706))
-                                    },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        viewModel.toggleLoginSheet(true)
-                                    }
+                                Icon(
+                                    imageVector = if (userMode == UserMode.OFFICER) Icons.Default.School else Icons.Default.AdminPanelSettings,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color.White
                                 )
-                                DropdownMenuItem(
-                                    text = { Text("Share App with Friends") },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Share, contentDescription = null, tint = Color(0xFF2563EB))
-                                    },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        showShareModal = true
-                                    }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (userMode == UserMode.OFFICER) strings.studentMode else strings.reviewerDeskMode,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
                                 )
-                                DropdownMenuItem(
-                                    text = { Text(strings.securityMenu) },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFF059669))
-                                    },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        showSecurityModal = true
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(strings.auditTrailMenu) },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                    },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        showAuditModal = true
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("${strings.languageMenu} (${selectedLanguage.displayName})") },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Translate, contentDescription = null, tint = Color(0xFFD97706))
-                                    },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        showLanguageDialog = true
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(strings.replayTourMenu) },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.AutoStories, contentDescription = null, tint = Color(0xFF2563EB))
-                                    },
-                                    onClick = {
-                                        showMoreMenu = false
-                                        showIntroTour = true
-                                    }
-                                )
+                            }
+
+                            // 3. Overflow Menu
+                            Box {
+                                IconButton(
+                                    onClick = { showMoreMenu = true },
+                                    modifier = Modifier.testTag("top_app_bar_more_menu")
+                                ) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More Options")
+                                }
+
+
+                                DropdownMenu(
+                                    expanded = showMoreMenu,
+                                    onDismissRequest = { showMoreMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Switch Student Persona (${student?.name?.split(" ")?.firstOrNull() ?: "User"})") },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.SwitchAccount, contentDescription = null, tint = Color(0xFFD97706))
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            viewModel.toggleLoginSheet(true)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (isOfflineMode) "Simulate Online Mode" else "Simulate Offline Mode (Draft Queue)") },
+                                        leadingIcon = {
+                                            Icon(if (isOfflineMode) Icons.Default.Wifi else Icons.Default.WifiOff, contentDescription = null, tint = if (isOfflineMode) Color(0xFF059669) else Color(0xFFEF4444))
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            viewModel.toggleOfflineMode(!isOfflineMode)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Reset Demo to Clean State") },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.RestartAlt, contentDescription = null, tint = Color(0xFFEF4444))
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            viewModel.resetDemoData()
+                                        }
+                                    )
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text(strings.securityMenu) },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFF059669))
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            showSecurityModal = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(strings.auditTrailMenu) },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            showAuditModal = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("${strings.languageMenu} (${selectedLanguage.displayName})") },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.Translate, contentDescription = null, tint = Color(0xFFD97706))
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            showLanguageDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(strings.replayTourMenu) },
+                                        leadingIcon = {
+                                            Icon(Icons.Default.AutoStories, contentDescription = null, tint = Color(0xFF2563EB))
+                                        },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            showIntroTour = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    )
+
+                    // Offline simulation banner
+                    if (isOfflineMode) {
+                        Surface(
+                            color = Color(0xFFEF4444),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.WifiOff, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Offline Mode Active • Applications saved to local draft queue",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { viewModel.toggleOfflineMode(false) },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Go Online", style = MaterialTheme.typography.labelSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
-                )
+                }
             },
             bottomBar = {
                 if (selectedAppId == null) {
@@ -277,59 +353,66 @@ fun EkikritMainApp(
                         containerColor = MaterialTheme.colorScheme.surface,
                         tonalElevation = 6.dp
                     ) {
-                        val tabs = listOf(
-                            Triple(AppTab.DASHBOARD, Icons.Default.Dashboard, strings.tabDashboard),
-                            Triple(AppTab.SCHEMES, Icons.Default.School, strings.tabSchemes),
-                            Triple(AppTab.DOCUMENTS, Icons.Default.FolderShared, strings.tabWallet),
-                            Triple(AppTab.DISBURSEMENT, Icons.Default.Payments, strings.tabDbtRail),
-                            Triple(AppTab.REVIEWER_QUEUE, Icons.Default.AdminPanelSettings, strings.tabReviewDesk)
-                        )
+                        if (userMode == UserMode.STUDENT) {
+                            val tabs = listOf(
+                                Triple(AppTab.DASHBOARD, Icons.Default.Dashboard, strings.tabDashboard),
+                                Triple(AppTab.SCHEMES, Icons.Default.School, strings.tabSchemes),
+                                Triple(AppTab.DOCUMENTS, Icons.Default.FolderShared, strings.tabWallet),
+                                Triple(AppTab.DISBURSEMENT, Icons.Default.Payments, strings.tabDbtRail)
+                            )
 
-                        tabs.forEach { (tab, icon, label) ->
-                            val hasPendingItems = tab == AppTab.REVIEWER_QUEUE && allReviewItems.any { it.status == "PENDING" }
-
+                            tabs.forEach { (tab, icon, label) ->
+                                NavigationBarItem(
+                                    selected = currentTab == tab,
+                                    onClick = { viewModel.selectTab(tab) },
+                                    icon = { Icon(imageVector = icon, contentDescription = label) },
+                                    label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                    modifier = Modifier.testTag("nav_tab_${tab.name}")
+                                )
+                            }
+                        } else {
+                            // Officer Mode Navigation
                             NavigationBarItem(
-                                selected = currentTab == tab,
-                                onClick = { viewModel.selectTab(tab) },
+                                selected = currentTab == AppTab.REVIEWER_QUEUE,
+                                onClick = { viewModel.selectTab(AppTab.REVIEWER_QUEUE) },
                                 icon = {
                                     BadgedBox(
                                         badge = {
-                                            if (hasPendingItems) {
+                                            if (pendingReviewCount > 0) {
                                                 Badge(containerColor = Color(0xFFD97706)) {
-                                                    Text("1")
+                                                    Text("$pendingReviewCount")
                                                 }
                                             }
                                         }
                                     ) {
-                                        Icon(imageVector = icon, contentDescription = label)
+                                        Icon(imageVector = Icons.Default.AdminPanelSettings, contentDescription = "Reviewer Desk")
                                     }
                                 },
-                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-                                modifier = Modifier.testTag("nav_tab_${tab.name}")
+                                label = { Text("Pending Review Queue ($pendingReviewCount)", style = MaterialTheme.typography.labelSmall) },
+                                modifier = Modifier.testTag("nav_tab_officer_review")
                             )
                         }
                     }
                 }
             },
-        floatingActionButton = {
-            if (!isJagoOpen && selectedAppId == null) {
-                JagoFloatingButton(
-                    onClick = { viewModel.toggleJagoChat(true) }
-                )
+            floatingActionButton = {
+                if (!isJagoOpen && selectedAppId == null && userMode == UserMode.STUDENT) {
+                    JagoFloatingButton(
+                        onClick = { viewModel.toggleJagoChat(true) }
+                    )
+                }
             }
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            // Check if user drilled into a scheme detail
-            if (selectedAppId != null) {
-                val selectedApp = applications.find { it.id == selectedAppId }
-                val selectedScheme = schemes.find { it.id == selectedApp?.schemeId }
-                val verRecordsFlow = viewModel.getVerificationRecordsForApp(selectedAppId ?: "")
-                val verRecords by verRecordsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                if (selectedAppId != null) {
+                    val selectedApp = applications.find { it.id == selectedAppId }
+                    val selectedScheme = schemes.find { it.id == selectedApp?.schemeId }
+                    val verRecordsFlow = viewModel.getVerificationRecordsForAppFlow(selectedAppId ?: "")
+                    val verRecords by verRecordsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
                 SchemeDetailScreen(
                     application = selectedApp,
@@ -340,6 +423,8 @@ fun EkikritMainApp(
                     onTriggerVerification = { viewModel.triggerVerification(it) },
                     onOpenReviewDesk = {
                         viewModel.closeApplicationDetail()
+                        viewModel.setUserMode(UserMode.OFFICER)
+                        viewModel.switchToReviewerRole()
                         viewModel.selectTab(AppTab.REVIEWER_QUEUE)
                     },
                     onPullDocument = { type, title, num, issuer ->
@@ -354,10 +439,15 @@ fun EkikritMainApp(
                             student = student,
                             applications = applications,
                             schemes = schemes,
+                            documents = documents,
                             onSelectScheme = { viewModel.openApplicationDetail(it) },
-                            onOpenReviewDesk = { viewModel.selectTab(AppTab.REVIEWER_QUEUE) },
+                            onOpenReviewDesk = {
+                                viewModel.setUserMode(UserMode.OFFICER)
+                                viewModel.switchToReviewerRole()
+                                viewModel.selectTab(AppTab.REVIEWER_QUEUE)
+                            },
                             onOpenJago = { viewModel.toggleJagoChat(true) },
-                            onApplyUnreached = { viewModel.applyForUnreachedScheme(it) },
+                            onApplyUnreached = { viewModel.applyForScheme(it) },
                             onOpenConsentDialog = { viewModel.toggleConsentDialog(true) },
                             onOpenSecurityModal = { showSecurityModal = true },
                             onOpenIntroTour = { showIntroTour = true },
@@ -366,19 +456,15 @@ fun EkikritMainApp(
                         )
                     }
                     AppTab.SCHEMES -> {
-                        DashboardScreen(
+                        ScholarshipsScreen(
                             student = student,
-                            applications = applications,
                             schemes = schemes,
-                            onSelectScheme = { viewModel.openApplicationDetail(it) },
-                            onOpenReviewDesk = { viewModel.selectTab(AppTab.REVIEWER_QUEUE) },
-                            onOpenJago = { viewModel.toggleJagoChat(true) },
-                            onApplyUnreached = { viewModel.applyForUnreachedScheme(it) },
-                            onOpenConsentDialog = { viewModel.toggleConsentDialog(true) },
-                            onOpenSecurityModal = { showSecurityModal = true },
-                            onOpenIntroTour = { showIntroTour = true },
-                            onOpenLoginSheet = { viewModel.toggleLoginSheet(true) },
-                            topUnreachedScheme = topUnreachedScheme
+                            applications = applications,
+                            documents = documents,
+                            onSelectApplication = { viewModel.openApplicationDetail(it) },
+                            onApplyScheme = { schemeId, income ->
+                                viewModel.applyForScheme(schemeId, income)
+                            }
                         )
                     }
                     AppTab.DOCUMENTS -> {
@@ -388,7 +474,7 @@ fun EkikritMainApp(
                             hasConsentGiven = student?.hasConsentGiven ?: true,
                             studentName = student?.name ?: "",
                             onConnectDigiLocker = { phoneOrAadhaar ->
-                                viewModel.connectDigiLocker(phoneOrAadhaar)
+                                viewModel.loginWithMobileOrAadhaar(phoneOrAadhaar)
                             },
                             onPullNewDocument = { type, title, num, issuer ->
                                 viewModel.pullDigiLockerDocument(type, title, num, issuer)
@@ -405,15 +491,17 @@ fun EkikritMainApp(
                     }
                     AppTab.REVIEWER_QUEUE -> {
                         ReviewerDeskScreen(
-                            reviewItems = allReviewItems,
+                            reviewItems = reviewQueue,
                             currentUserRole = student?.role ?: "STUDENT",
                             onSwitchToReviewer = {
+                                viewModel.setUserMode(UserMode.OFFICER)
                                 viewModel.switchToReviewerRole()
                             },
                             onResolve = { id, approved, notes ->
                                 viewModel.resolveReviewItem(id, approved, notes)
                             },
                             onBackToStudentView = {
+                                viewModel.setUserMode(UserMode.STUDENT)
                                 viewModel.switchToStudentRole()
                                 viewModel.selectTab(AppTab.DASHBOARD)
                             }
@@ -422,129 +510,148 @@ fun EkikritMainApp(
                 }
             }
         }
-    }
 
-    // Starting Intro Tour (Walkthrough of all sections & app information)
-    if (showIntroTour) {
-        AppIntroTourModal(
-            onDismiss = { showIntroTour = false }
-        )
-    }
-
-    // JAGO Floating Multilingual Assistant
-    if (isJagoOpen) {
-        JagoChatModal(
-            messages = jagoMessages,
-            currentLanguage = selectedLanguage,
-            onLanguageSelect = { viewModel.setLanguage(it) },
-            onSendMessage = { viewModel.sendJagoQuery(it) },
-            onDismiss = { viewModel.toggleJagoChat(false) }
-        )
-    }
-
-    // DPDP Act Consent Dialog
-    if (showConsentDialog) {
-        DpdpConsentDialog(
-            hasConsentGiven = student?.hasConsentGiven ?: true,
-            onConfirm = { granted -> viewModel.setConsent(granted) },
-            onDismiss = { viewModel.toggleConsentDialog(false) }
-        )
-    }
-
-    // Security & DPDP Compliance Modal
-    if (showSecurityModal) {
-        SecurityPrivacyModal(
-            hasConsent = student?.hasConsentGiven ?: true,
-            onRevokeOrGrantConsent = { granted -> viewModel.setConsent(granted) },
-            onDismiss = { showSecurityModal = false }
-        )
-    }
-
-    // Language Selection Dialog
-    if (showLanguageDialog) {
-        AlertDialog(
-            onDismissRequest = { showLanguageDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Translate, contentDescription = null, tint = Color(0xFFD97706))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(strings.selectLanguageTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        // Starting Intro Tour
+        if (showIntroTour) {
+            AppIntroTourModal(
+                onDismiss = {
+                    sharedPrefs.edit().putBoolean("has_completed_onboarding", true).apply()
+                    showIntroTour = false
                 }
-            },
-            text = {
-                Column {
-                    AppLanguage.entries.forEach { lang ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = selectedLanguage == lang,
-                                onClick = {
-                                    viewModel.setLanguage(lang)
-                                    showLanguageDialog = false
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("${lang.nativeName} (${lang.displayName})", style = MaterialTheme.typography.bodyMedium)
+            )
+        }
+
+        // JAGO Multilingual Assistant
+        if (isJagoOpen) {
+            JagoChatModal(
+                messages = jagoMessages,
+                currentLanguage = selectedLanguage,
+                onLanguageSelect = { viewModel.setLanguage(it) },
+                onSendMessage = { viewModel.sendJagoQuery(it) },
+                onDismiss = { viewModel.toggleJagoChat(false) }
+            )
+        }
+
+        // DPDP Act Consent Dialog
+        if (showConsentDialog) {
+            DpdpConsentDialog(
+                hasConsentGiven = student?.hasConsentGiven ?: true,
+                onConfirm = { granted ->
+                    viewModel.updateStudentConsent(granted)
+                    viewModel.toggleConsentDialog(false)
+                },
+                onDismiss = { viewModel.toggleConsentDialog(false) }
+            )
+        }
+
+        // Security & Privacy Modal
+        if (showSecurityModal) {
+            SecurityPrivacyModal(
+                hasConsent = student?.hasConsentGiven ?: true,
+                onRevokeOrGrantConsent = { granted ->
+                    viewModel.updateStudentConsent(granted)
+                    showSecurityModal = false
+                },
+                onDismiss = { showSecurityModal = false }
+            )
+        }
+
+        // Notifications Modal
+        if (showNotificationsSheet) {
+            NotificationsModal(
+                notifications = notifications,
+                onMarkAsRead = { viewModel.markNotificationAsRead(it) },
+                onMarkAllAsRead = { viewModel.markAllNotificationsAsRead() },
+                onDismiss = { viewModel.toggleNotificationsSheet(false) }
+            )
+        }
+
+        // Language Selection Dialog
+        if (showLanguageDialog) {
+            AlertDialog(
+                onDismissRequest = { showLanguageDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Translate, contentDescription = null, tint = Color(0xFFD97706))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(strings.selectLanguageTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                },
+                text = {
+                    Column {
+                        AppLanguage.entries.forEach { lang ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedLanguage == lang,
+                                    onClick = {
+                                        viewModel.setLanguage(lang)
+                                        showLanguageDialog = false
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("${lang.nativeName} (${lang.displayName})", style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
                     }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showLanguageDialog = false }) {
+                        Text(strings.cancel)
+                    }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLanguageDialog = false }) {
-                    Text(strings.cancel)
-                }
-            }
-        )
-    }
+            )
+        }
 
-    // Login & Switch User Modal
-    if (showLoginSheet) {
-        LoginModal(
-            currentStudent = student,
-            allStudents = allStudents,
-            onSelectStudent = { studentId ->
-                viewModel.switchStudent(studentId)
-            },
-            onLoginWithPhone = { identifier, name ->
-                viewModel.loginWithMobileOrAadhaar(identifier, name)
-            },
-            onDismiss = { viewModel.toggleLoginSheet(false) }
-        )
-    }
+        // Login & Switch User Modal
+        if (showLoginSheet) {
+            LoginModal(
+                currentStudent = student,
+                allStudents = allStudents,
+                onSelectStudent = { studentId ->
+                    viewModel.switchStudent(studentId)
+                },
+                onLoginWithPhone = { identifier, name ->
+                    viewModel.loginWithMobileOrAadhaar(identifier, name)
+                },
+                onDismiss = { viewModel.toggleLoginSheet(false) }
+            )
+        }
 
-    // Share App Modal
-    if (showShareModal) {
-        ShareAppModal(
-            onDismiss = { showShareModal = false }
-        )
-    }
+        // Share App Modal
+        if (showShareModal) {
+            ShareAppModal(
+                onDismiss = { showShareModal = false }
+            )
+        }
 
-    // DPDP Immutable Audit Log Modal
-    if (showAuditModal) {
-        AlertDialog(
-            onDismissRequest = { showAuditModal = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("DPDP Act Governance Audit Trail", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        // DPDP Immutable Audit Log Modal
+        if (showAuditModal) {
+            AlertDialog(
+                onDismissRequest = { showAuditModal = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("DPDP Act Governance Audit Trail", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+                },
+                text = {
+                    Box(modifier = Modifier.fillMaxHeight(0.7f)) {
+                        AuditTrailScreen(auditLogs = auditLogs)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showAuditModal = false }) {
+                        Text(strings.close)
+                    }
                 }
-            },
-            text = {
-                Box(modifier = Modifier.fillMaxHeight(0.7f)) {
-                    AuditTrailScreen(auditLogs = auditLogs)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showAuditModal = false }) {
-                    Text(strings.close)
-                }
-            }
-        )
+            )
+        }
     }
-    }
+}
 }
