@@ -3,511 +3,477 @@ package com.example.data.repository
 import com.example.data.local.EkikritDatabase
 import com.example.data.local.SeedData
 import com.example.data.model.*
+import com.example.domain.EligibilityEngine
+import com.example.domain.UnifiedVerificationEngine
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
-class EkikritRepository(private val db: EkikritDatabase) {
-
+@OptIn(ExperimentalCoroutinesApi::class)
+class EkikritRepository(
+    private val database: EkikritDatabase,
+    private val scope: CoroutineScope
+) {
+    // Single Source of Truth for the logged-in student
     private val _activeStudentId = MutableStateFlow("STU_2026_01")
-    val activeStudentId = _activeStudentId.asStateFlow()
+    val activeStudentId: StateFlow<String> = _activeStudentId.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
+    // Offline / Connectivity Simulation State
+    private val _isOfflineMode = MutableStateFlow(false)
+    val isOfflineMode: StateFlow<Boolean> = _isOfflineMode.asStateFlow()
+
+    fun setOfflineMode(offline: Boolean) {
+        _isOfflineMode.value = offline
+        if (!offline) {
+            // Trigger background sync when back online
+            scope.launch { syncPendingDrafts() }
+        }
+    }
+
+    // Active Student Flow
     val studentFlow: Flow<StudentEntity?> = _activeStudentId.flatMapLatest { id ->
-        db.studentDao().getStudentFlow(id)
-    }
-    val allStudentsFlow: Flow<List<StudentEntity>> = db.studentDao().getAllStudentsFlow()
-    val schemesFlow: Flow<List<SchemeEntity>> = db.schemeDao().getAllSchemesFlow()
-    val applicationsFlow: Flow<List<ApplicationEntity>> = db.applicationDao().getAllApplicationsFlow()
-    val documentsFlow: Flow<List<DocumentEntity>> = db.documentDao().getAllDocumentsFlow()
-    val disbursementsFlow: Flow<List<DisbursementEntity>> = db.disbursementDao().getAllDisbursementsFlow()
-    val pendingReviewItemsFlow: Flow<List<ReviewQueueEntity>> = db.reviewQueueDao().getPendingReviewItemsFlow()
-    val allReviewItemsFlow: Flow<List<ReviewQueueEntity>> = db.reviewQueueDao().getAllReviewItemsFlow()
-    val auditLogsFlow: Flow<List<AuditLogEntity>> = db.auditLogDao().getAllLogsFlow()
-
-    suspend fun ensurePresetStudents() = withContext(Dispatchers.IO) {
-        SeedData.ensureDatabasePopulated(db)
+        database.studentDao().getStudentFlow(id)
     }
 
-    suspend fun switchStudent(studentId: String) = withContext(Dispatchers.IO) {
-        _activeStudentId.value = studentId
-        val student = db.studentDao().getStudent(studentId)
-        if (student != null) {
-            db.auditLogDao().insert(
-                AuditLogEntity(
-                    action = "User Switched Profile",
-                    actor = "Student (${student.name})",
-                    details = "Active beneficiary session switched to ${student.name} (${student.category}, ${student.institutionName}).",
-                    timestamp = getCurrentTimestamp()
-                )
-            )
-        }
+    // All available schemes across MoTA
+    val schemesFlow: Flow<List<SchemeEntity>> = database.schemeDao().getAllSchemesFlow()
+
+    // Applications strictly filtered to the active student
+    val applicationsFlow: Flow<List<ApplicationEntity>> = _activeStudentId.flatMapLatest { id ->
+        database.applicationDao().getApplicationsForStudentFlow(id)
     }
 
-    suspend fun loginWithMobileOrAadhaar(identifier: String, name: String? = null): StudentEntity = withContext(Dispatchers.IO) {
-        val trimmed = identifier.trim()
-        val existing = db.studentDao().findStudentByPhoneOrAadhaar(trimmed)
-        if (existing != null) {
-            _activeStudentId.value = existing.id
-            db.auditLogDao().insert(
-                AuditLogEntity(
-                    action = "Student Authenticated",
-                    actor = "Student (${existing.name})",
-                    details = "Logged in via registered mobile/Aadhaar ($trimmed).",
-                    timestamp = getCurrentTimestamp()
-                )
-            )
-            return@withContext existing
-        }
-
-        // Create new student persona
-        val newId = "STU_" + System.currentTimeMillis().toString().takeLast(6)
-        val studentName = if (!name.isNullOrBlank()) name.trim() else "Beneficiary Student"
-        val newStudent = StudentEntity(
-            id = newId,
-            name = studentName,
-            dob = "10-06-2004",
-            mobile = if (trimmed.startsWith("+91")) trimmed else "+91 $trimmed",
-            state = "Jharkhand",
-            institutionId = "AISHE-U-0199",
-            institutionName = "Birsa Agricultural University",
-            course = "B.Sc (Hons) Agriculture",
-            category = "ST (Tribal Beneficiary)",
-            pvtgCommunity = "",
-            preferredLanguage = "en",
-            apaarId = "APAAR-${(1000..9999).random()}-${(1000..9999).random()}-${(1000..9999).random()}",
-            annualIncome = 150000.0,
-            aadhaarMasked = "XXXX-XXXX-${trimmed.takeLast(4).padStart(4, '0')}",
-            bankAccountMasked = "State Bank of India (A/C **${(1000..9999).random()})",
-            ifscCode = "SBIN0004920",
-            isDigiLockerLinked = true,
-            hasConsentGiven = true
-        )
-        db.studentDao().insertStudent(newStudent)
-        _activeStudentId.value = newId
-        db.auditLogDao().insert(
-            AuditLogEntity(
-                action = "New Student Registered & Logged In",
-                actor = "Student ($studentName)",
-                details = "Registered and authenticated session via Aadhaar/Mobile ($trimmed).",
-                timestamp = getCurrentTimestamp()
-            )
-        )
-        return@withContext newStudent
+    // Documents strictly filtered to the active student
+    val documentsFlow: Flow<List<DocumentEntity>> = _activeStudentId.flatMapLatest { id ->
+        database.documentDao().getDocumentsForStudentFlow(id)
     }
 
-    fun getVerificationRecordsFlow(applicationId: String): Flow<List<VerificationRecordEntity>> {
-        return db.verificationRecordDao().getRecordsForAppFlow(applicationId)
+    // Disbursements strictly filtered to the active student
+    val disbursementsFlow: Flow<List<DisbursementEntity>> = _activeStudentId.flatMapLatest { id ->
+        database.disbursementDao().getDisbursementsForStudentFlow(id)
     }
+
+    // Notifications strictly filtered to the active student
+    val notificationsFlow: Flow<List<NotificationEntity>> = _activeStudentId.flatMapLatest { id ->
+        database.notificationDao().getNotificationsForStudentFlow(id)
+    }
+
+    // Officer Review Queue (All pending verification exceptions)
+    val reviewQueueFlow: Flow<List<ReviewQueueEntity>> = database.reviewQueueDao().getAllReviewItemsFlow()
+
+    // Audit Log Trail
+    val auditLogsFlow: Flow<List<AuditLogEntity>> = database.auditLogDao().getAllLogsFlow()
+
+    // All Students list for quick demo persona switching
+    val allStudentsFlow: Flow<List<StudentEntity>> = database.studentDao().getAllStudentsFlow()
 
     private fun getCurrentTimestamp(): String {
         return SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.ENGLISH).format(Date())
     }
 
-    suspend fun saveStudentProfile(student: StudentEntity) = withContext(Dispatchers.IO) {
-        db.studentDao().insertStudent(student)
-        db.auditLogDao().insert(
+    suspend fun switchStudent(studentId: String) = withContext(Dispatchers.IO) {
+        val student = database.studentDao().getStudent(studentId)
+        if (student != null) {
+            _activeStudentId.value = studentId
+            database.auditLogDao().insert(
+                AuditLogEntity(
+                    action = "AUTH_USER_SWITCH",
+                    actor = student.name,
+                    details = "Session switched to student ${student.name} (ID: $studentId, Category: ${student.category}).",
+                    timestamp = getCurrentTimestamp()
+                )
+            )
+        }
+    }
+
+    suspend fun authenticateWithPhoneOrAadhaar(phoneOrAadhaar: String, customName: String? = null): StudentEntity = withContext(Dispatchers.IO) {
+        val cleanInput = phoneOrAadhaar.trim().replace("\\s+".toRegex(), "").replace("-", "")
+        val existing = database.studentDao().findStudentByPhoneOrAadhaar(cleanInput)
+        
+        val student = if (existing != null) {
+            existing
+        } else {
+            val newId = "STU_MOCK_${System.currentTimeMillis().toString().takeLast(4)}"
+            val name = customName?.ifBlank { null } ?: "Student User"
+            val newStudent = StudentEntity(
+                id = newId,
+                name = name,
+                mobile = phoneOrAadhaar,
+                category = "ST (Tribal Scholar)",
+                academicLevel = "UNDERGRADUATE",
+                institutionName = "National Institute of Technology, Rourkela",
+                annualIncome = 220000.0,
+                aadhaarMasked = "XXXX-XXXX-${cleanInput.takeLast(4).padStart(4, '0')}"
+            )
+            database.studentDao().insertStudent(newStudent)
+            newStudent
+        }
+
+        _activeStudentId.value = student.id
+        database.auditLogDao().insert(
             AuditLogEntity(
-                action = "Profile Updated",
-                actor = "Student (${student.name})",
-                details = "Updated category (${student.category}), preferred language (${student.preferredLanguage}), and institution.",
+                action = "AUTH_OTP_LOGIN",
+                actor = student.name,
+                details = "Student logged in via Aadhaar / Mobile OTP mock rail (UIDAI Level-2).",
                 timestamp = getCurrentTimestamp()
+            )
+        )
+        student
+    }
+
+    fun getActiveStudentSync(): StudentEntity? {
+        val currentId = _activeStudentId.value
+        // Helper to grab synchronous student or default
+        return null
+    }
+
+    suspend fun getVerificationRecordsForApp(appId: String): List<VerificationRecordEntity> = withContext(Dispatchers.IO) {
+        database.verificationRecordDao().getRecordsForApp(appId)
+    }
+
+    fun getVerificationRecordsForAppFlow(appId: String): Flow<List<VerificationRecordEntity>> {
+        return database.verificationRecordDao().getRecordsForAppFlow(appId)
+    }
+
+    /**
+     * Executes multi-source verification across all 7 providers.
+     */
+    suspend fun runSevenSourceVerification(applicationId: String) = withContext(Dispatchers.IO) {
+        val currentStudentId = _activeStudentId.value
+        val student = database.studentDao().getStudent(currentStudentId) ?: return@withContext
+        val application = database.applicationDao().getApplicationById(applicationId) ?: return@withContext
+        val documents = database.documentDao().getDocumentsForStudent(currentStudentId)
+
+        val output = UnifiedVerificationEngine.executeSevenSourceVerification(student, application, documents)
+
+        // Clear previous records for this application and save new ones
+        database.verificationRecordDao().deleteForApp(applicationId)
+        database.verificationRecordDao().insertAll(output.records)
+
+        val hasMismatch = output.records.any { it.status == "MISMATCH" }
+
+        if (output.reviewItem != null) {
+            database.reviewQueueDao().insert(output.reviewItem)
+        }
+
+        val newStage = if (hasMismatch) "INSTITUTE_VERIFICATION" else "SANCTIONED"
+        val statusText = if (hasMismatch) {
+            "Multi-source API verification completed (6/7 verified). 1 minor income variance auto-routed to District Review Desk."
+        } else {
+            "All 7 government registries verified. Sanction Order MoTA/2026/09 issued."
+        }
+
+        database.applicationDao().updateStage(
+            appId = applicationId,
+            stage = newStage,
+            statusText = statusText,
+            timestamp = getCurrentTimestamp(),
+            hasDiscrepancy = hasMismatch,
+            pendingAction = if (hasMismatch) "Officer Review Desk is clearing the income certificate tolerance." else null
+        )
+
+        database.auditLogDao().insert(
+            AuditLogEntity(
+                action = "VERIFICATION_EXECUTE",
+                actor = "Unified Verification Engine",
+                details = "Executed 7-source verification for ${application.schemeCode}: ${output.summaryMessage}",
+                timestamp = getCurrentTimestamp()
+            )
+        )
+
+        database.notificationDao().insert(
+            NotificationEntity(
+                id = "NOTIF_${System.currentTimeMillis()}",
+                studentId = student.id,
+                title = "Verification Updated",
+                message = "Verification checks refreshed for ${application.schemeCode}: ${output.summaryMessage}",
+                type = "VERIFICATION",
+                timestamp = getCurrentTimestamp(),
+                isRead = false
             )
         )
     }
 
-    suspend fun setLanguage(languageCode: String) = withContext(Dispatchers.IO) {
-        val current = db.studentDao().getStudent(_activeStudentId.value) ?: return@withContext
-        val updated = current.copy(preferredLanguage = languageCode)
-        db.studentDao().updateStudent(updated)
-    }
+    /**
+     * Officer Review Desk Action: Approves or clarifies an exception.
+     */
+    suspend fun resolveReviewItem(reviewItemId: String, isApproved: Boolean, notes: String) = withContext(Dispatchers.IO) {
+        val reviewItem = database.reviewQueueDao().getById(reviewItemId) ?: return@withContext
+        val now = getCurrentTimestamp()
 
-    suspend fun setConsentGiven(given: Boolean) = withContext(Dispatchers.IO) {
-        val current = db.studentDao().getStudent(_activeStudentId.value) ?: return@withContext
-        val updated = current.copy(hasConsentGiven = given)
-        db.studentDao().updateStudent(updated)
-        db.auditLogDao().insert(
+        val updatedStatus = if (isApproved) "APPROVED" else "RESUBMIT"
+        database.reviewQueueDao().update(
+            reviewItem.copy(
+                status = updatedStatus,
+                resolvedAt = now,
+                resolutionNotes = notes.ifBlank { if (isApproved) "Income variance verified within allowable scheme ceiling." else "Clarification requested from student." }
+            )
+        )
+
+        // Update corresponding verification record
+        database.verificationRecordDao().updateRecordStatus(
+            recordId = reviewItem.verificationRecordId,
+            status = if (isApproved) "RESOLVED" else "MISMATCH",
+            notes = "Officer cleared variance: $notes"
+        )
+
+        // Update application state
+        val application = database.applicationDao().getApplicationById(reviewItem.applicationId)
+        if (application != null) {
+            val newStage = if (isApproved) "SANCTIONED" else "INSTITUTE_VERIFICATION"
+            val newStatusText = if (isApproved) {
+                "Officer review complete. Exception cleared. Sanction order generated for Aadhaar DBT payment."
+            } else {
+                "Action requested: Officer requested additional clarification on income certificate."
+            }
+
+            database.applicationDao().updateStage(
+                appId = application.id,
+                stage = newStage,
+                statusText = newStatusText,
+                timestamp = now,
+                hasDiscrepancy = !isApproved,
+                pendingAction = if (isApproved) null else "Please review officer remarks: $notes"
+            )
+
+            database.notificationDao().insert(
+                NotificationEntity(
+                    id = "NOTIF_${System.currentTimeMillis()}",
+                    studentId = reviewItem.studentId,
+                    title = if (isApproved) "Review Approved & Scheme Sanctioned" else "Action Required on Review",
+                    message = if (isApproved) "Officer cleared income variance for ${application.schemeCode}. Sanctioned!" else "Officer note: $notes",
+                    type = if (isApproved) "SANCTION" else "REVIEW",
+                    timestamp = now,
+                    isRead = false
+                )
+            )
+        }
+
+        database.auditLogDao().insert(
             AuditLogEntity(
-                action = if (given) "Consent Granted" else "Consent Revoked",
-                actor = "Student (${current.name})",
-                details = if (given) "DPDP Act compliance consent recorded for automated DigiLocker document fetch." else "DigiLocker access consent revoked.",
-                timestamp = getCurrentTimestamp()
+                action = if (isApproved) "OFFICER_APPROVE_EXCEPTION" else "OFFICER_REQUEST_CLARIFICATION",
+                actor = "District Tribal Welfare Officer",
+                details = "Item $reviewItemId (${reviewItem.fieldName}) resolved with status $updatedStatus. Notes: $notes",
+                timestamp = now
             )
         )
     }
 
-    suspend fun pullDocumentFromDigiLocker(type: String, title: String, docNumber: String, issuer: String) = withContext(Dispatchers.IO) {
-        val docId = "DOC_${System.currentTimeMillis()}"
-        val newDoc = DocumentEntity(
-            id = docId,
-            studentId = "STU_2026_01",
+    /**
+     * Applies for an unreached or new scheme for the active student.
+     */
+    suspend fun applyForScheme(schemeId: String, declaredIncome: Double? = null) = withContext(Dispatchers.IO) {
+        val currentStudentId = _activeStudentId.value
+        val student = database.studentDao().getStudent(currentStudentId) ?: return@withContext
+        val scheme = database.schemeDao().getSchemeById(schemeId) ?: return@withContext
+        val docs = database.documentDao().getDocumentsForStudent(currentStudentId)
+        val existingApps = database.applicationDao().getApplicationsForStudent(currentStudentId)
+
+        // Check eligibility engine
+        val eligibility = EligibilityEngine.evaluate(student, scheme, docs, existingApps)
+
+        val newAppId = "APP_${scheme.code.take(4)}_${System.currentTimeMillis().toString().takeLast(6)}"
+        val now = getCurrentTimestamp()
+
+        val sanctionedAmt = when (scheme.id) {
+            "SCH_PRE" -> 4500.0
+            "SCH_PMS" -> 28000.0
+            "SCH_TOPCLASS" -> 142000.0
+            "SCH_NFST" -> 420000.0
+            "SCH_NOS" -> 3200000.0
+            else -> 25000.0
+        }
+
+        val isOffline = _isOfflineMode.value
+
+        val newApp = ApplicationEntity(
+            id = newAppId,
+            studentId = student.id,
+            schemeId = scheme.id,
+            schemeCode = scheme.code,
+            schemeName = scheme.name,
+            currentStage = "SUBMITTED",
+            statusText = if (isOffline) "Saved locally in offline draft queue. Will automatically submit when online." else "Application submitted via Unified Tribal Scholarship Rail. Auto-attaching 5 verified DigiLocker credentials.",
+            appliedDate = now,
+            lastUpdated = now,
+            pendingActionDesc = null,
+            hasDiscrepancy = false,
+            sanctionedAmount = sanctionedAmt,
+            estimatedDisbursementDays = 14,
+            syncState = if (isOffline) "PENDING_SYNC" else "SYNCED"
+        )
+
+        database.applicationDao().insert(newApp)
+
+        // Clear any saved draft
+        database.applicationDraftDao().deleteDraft(student.id, scheme.id)
+
+        database.auditLogDao().insert(
+            AuditLogEntity(
+                action = "APPLICATION_SUBMIT_ONE_CLICK",
+                actor = student.name,
+                details = "Submitted 1-click application for ${scheme.name} (ID: $newAppId). Zero paper re-upload.",
+                timestamp = now
+            )
+        )
+
+        database.notificationDao().insert(
+            NotificationEntity(
+                id = "NOTIF_${System.currentTimeMillis()}",
+                studentId = student.id,
+                title = "Application Submitted Successfully",
+                message = "Your 1-click application for ${scheme.name} is received. Pre-attached DigiLocker credentials verified.",
+                type = "STATUS",
+                timestamp = now,
+                isRead = false
+            )
+        )
+
+        // If online, immediately run multi-source verification
+        if (!isOffline) {
+            runSevenSourceVerification(newAppId)
+        }
+    }
+
+    suspend fun saveApplicationDraft(schemeId: String, currentStep: Int, declaredIncome: Double, selectedDocIds: String) = withContext(Dispatchers.IO) {
+        val currentStudentId = _activeStudentId.value
+        val draft = ApplicationDraftEntity(
+            id = "DRAFT_${currentStudentId}_${schemeId}",
+            studentId = currentStudentId,
+            schemeId = schemeId,
+            currentStep = currentStep,
+            declaredIncome = declaredIncome,
+            selectedDocIds = selectedDocIds,
+            lastSavedTimestamp = getCurrentTimestamp(),
+            isPendingSync = _isOfflineMode.value
+        )
+        database.applicationDraftDao().insert(draft)
+    }
+
+    suspend fun getApplicationDraft(schemeId: String): ApplicationDraftEntity? = withContext(Dispatchers.IO) {
+        val currentStudentId = _activeStudentId.value
+        database.applicationDraftDao().getDraft(currentStudentId, schemeId)
+    }
+
+    private suspend fun syncPendingDrafts() = withContext(Dispatchers.IO) {
+        val drafts = database.applicationDraftDao().getPendingSyncDrafts()
+        for (draft in drafts) {
+            applyForScheme(draft.schemeId, draft.declaredIncome)
+        }
+    }
+
+    suspend fun pullDocumentFromDigiLocker(type: String, title: String, number: String, issuer: String) = withContext(Dispatchers.IO) {
+        val currentStudentId = _activeStudentId.value
+        val student = database.studentDao().getStudent(currentStudentId) ?: return@withContext
+        val newDocId = "DOC_${System.currentTimeMillis().toString().takeLast(5)}"
+        val doc = DocumentEntity(
+            id = newDocId,
+            studentId = student.id,
             type = type,
             title = title,
-            docNumberMasked = docNumber,
-            source = "DigiLocker (Govt Issuer)",
+            docNumberMasked = number,
+            source = "DigiLocker National Depository",
             verificationStatus = "VERIFIED",
-            issuedDate = SimpleDateFormat("dd-MM-yyyy", Locale.ENGLISH).format(Date()),
+            issuedDate = "01 Jan 2026",
             issuedBy = issuer,
             isReusable = true
         )
-        db.documentDao().insert(newDoc)
-        db.auditLogDao().insert(
+        database.documentDao().insert(doc)
+
+        database.auditLogDao().insert(
             AuditLogEntity(
-                action = "Document Pulled from DigiLocker",
-                actor = "DigiLocker Rail",
-                details = "Fetched and cryptographically verified '$title' (Ref $docNumber) without requiring physical paper upload.",
+                action = "DIGILOCKER_DOC_PULL",
+                actor = student.name,
+                details = "Pulled $title ($number) into single-wallet. Reusable across all 5 schemes.",
                 timestamp = getCurrentTimestamp()
             )
         )
     }
 
-    suspend fun syncDigiLockerFull(mobileOrAadhaar: String) = withContext(Dispatchers.IO) {
-        val student = db.studentDao().getStudent(_activeStudentId.value)
-        if (student != null) {
-            db.studentDao().updateStudent(student.copy(isDigiLockerLinked = true, hasConsentGiven = true))
-        }
-
-        val initialDocs = listOf(
-            DocumentEntity(
-                id = "DOC_AADHAAR_01",
-                studentId = "STU_2026_01",
-                type = "Aadhaar",
-                title = "Aadhaar Demographic Card",
-                docNumberMasked = "XXXX-XXXX-8924",
-                source = "UIDAI DigiLocker",
-                verificationStatus = "VERIFIED",
-                issuedDate = "12-04-2019",
-                issuedBy = "UIDAI, Govt of India",
-                isReusable = true
-            ),
-            DocumentEntity(
-                id = "DOC_CASTE_01",
-                studentId = "STU_2026_01",
-                type = "Caste",
-                title = "Scheduled Tribe Certificate (PVTG - Birhor)",
-                docNumberMasked = "ST/OD/2026/8912",
-                source = "e-District Odisha (DigiLocker)",
-                verificationStatus = "VERIFIED",
-                issuedDate = "10-01-2026",
-                issuedBy = "Tehsildar, Bonai, Sundargarh",
-                isReusable = true
-            ),
-            DocumentEntity(
-                id = "DOC_INCOME_01",
-                studentId = "STU_2026_01",
-                type = "Income",
-                title = "Annual Family Income Certificate",
-                docNumberMasked = "INC/OD/2026/4102",
-                source = "e-District Odisha (DigiLocker)",
-                verificationStatus = "VERIFIED",
-                issuedDate = "15-02-2026",
-                issuedBy = "Revenue Officer, Sundargarh",
-                isReusable = true
-            ),
-            DocumentEntity(
-                id = "DOC_MARKSHEET_01",
-                studentId = "STU_2026_01",
-                type = "Marksheet",
-                title = "Higher Secondary Examination (Class XII)",
-                docNumberMasked = "CHSE/2022/88219",
-                source = "CHSE Odisha (DigiLocker)",
-                verificationStatus = "VERIFIED",
-                issuedDate = "22-06-2022",
-                issuedBy = "Council of Higher Secondary Education",
-                isReusable = true
-            ),
-            DocumentEntity(
-                id = "DOC_APAAR_01",
-                studentId = "STU_2026_01",
-                type = "APAAR",
-                title = "One Nation One Student ID (APAAR/ABC)",
-                docNumberMasked = "APAAR-8839-4021-9920",
-                source = "Ministry of Education (DigiLocker)",
-                verificationStatus = "VERIFIED",
-                issuedDate = "05-08-2023",
-                issuedBy = "National Academic Depository (NAD)",
-                isReusable = true
-            )
-        )
-
-        for (d in initialDocs) {
-            db.documentDao().insert(d)
-        }
-
-        db.auditLogDao().insert(
-            AuditLogEntity(
-                action = "DigiLocker OAuth2 Account Linked",
-                actor = "MeriPehchaan Gateway",
-                details = "Student authenticated via DigiLocker OTP ($mobileOrAadhaar). Synced 5 digital credentials with 100% cryptographic integrity under DPDP Act.",
-                timestamp = getCurrentTimestamp()
-            )
-        )
+    suspend fun markNotificationAsRead(id: String) = withContext(Dispatchers.IO) {
+        database.notificationDao().markAsRead(id)
     }
 
-    suspend fun triggerLiveMockVerification(appId: String) = withContext(Dispatchers.IO) {
-        val app = db.applicationDao().getApplicationById(appId) ?: return@withContext
-        val now = getCurrentTimestamp()
-
-        // 1. Clear existing verification records and re-run with live statuses
-        val uidaiRecord = VerificationRecordEntity(
-            id = "VER_UIDAI_${System.currentTimeMillis()}",
-            applicationId = appId,
-            schemeId = app.schemeId,
-            sourceSystem = "UIDAI (Aadhaar Rail)",
-            fieldChecked = "Demographic & Aadhaar Authentication",
-            declaredValue = "Birsa Munda Tirkey, 15-08-2003",
-            retrievedValue = "Birsa Munda Tirkey, 15-08-2003 (Score: 99.1%)",
-            status = "VERIFIED",
-            timestamp = now,
-            notes = "Aadhaar demographic authentication verified successfully with UIDAI central vault."
-        )
-
-        val edistrictRecord = VerificationRecordEntity(
-            id = "VER_EDIST_${System.currentTimeMillis()}",
-            applicationId = appId,
-            schemeId = app.schemeId,
-            sourceSystem = "e-District Revenue Portal",
-            fieldChecked = "Annual Household Income Certificate",
-            declaredValue = "₹2,10,000 / annum",
-            retrievedValue = "₹2,35,000 / annum (Cert INC/OD/2026/00142)",
-            status = "MISMATCH",
-            timestamp = now,
-            notes = "Discrepancy: Income variance detected (+11.9%). Auto-routed to Reviewer Queue instead of rejection."
-        )
-
-        db.verificationRecordDao().insertAll(listOf(uidaiRecord, edistrictRecord))
-
-        // Create or update review queue item
-        val reviewItem = ReviewQueueEntity(
-            id = "REV_${System.currentTimeMillis()}",
-            verificationRecordId = edistrictRecord.id,
-            applicationId = appId,
-            studentName = "Birsa Munda Tirkey",
-            category = "ST (PVTG - Birhor)",
-            schemeName = app.schemeName,
-            sourceSystem = "e-District Odisha",
-            fieldName = "Annual Household Income",
-            declaredValue = "₹2,10,000",
-            retrievedValue = "₹2,35,000",
-            mismatchReason = "Variance within 15% tribal tolerance limit. e-District certificate valid through 2027.",
-            status = "PENDING",
-            createdAt = now
-        )
-        db.reviewQueueDao().insert(reviewItem)
-
-        // Update application state
-        db.applicationDao().updateStage(
-            appId = appId,
-            stage = "UNDER_VERIFICATION",
-            statusText = "Verification In Progress (Income variance routed to Reviewer Desk)",
-            timestamp = now,
-            hasDiscrepancy = true,
-            pendingAction = "Income discrepancy under manual review by Tribal Welfare Officer. Student action not required."
-        )
-
-        db.auditLogDao().insert(
-            AuditLogEntity(
-                action = "Automated Verification Executed",
-                actor = "Ekikrit Verification Engine",
-                details = "UIDAI match: VERIFIED. e-District Income: MISMATCH (+11.9%). Non-blocking exception routed to Reviewer Desk.",
-                timestamp = now
-            )
-        )
+    suspend fun markAllNotificationsAsRead() = withContext(Dispatchers.IO) {
+        val currentStudentId = _activeStudentId.value
+        database.notificationDao().markAllAsRead(currentStudentId)
     }
 
-    suspend fun resolveReviewItem(reviewItemId: String, isApproved: Boolean, notes: String) = withContext(Dispatchers.IO) {
-        val item = db.reviewQueueDao().getById(reviewItemId) ?: return@withContext
-        val now = getCurrentTimestamp()
-
-        if (isApproved) {
-            val updatedItem = item.copy(
-                status = "APPROVED",
-                resolvedAt = now,
-                resolutionNotes = notes.ifBlank { "Approved on exception basis: Income remains below ₹2,50,000 scheme ceiling." }
-            )
-            db.reviewQueueDao().update(updatedItem)
-
-            // Update verification record to RESOLVED
-            db.verificationRecordDao().updateRecordStatus(
-                recordId = item.verificationRecordId,
-                status = "RESOLVED",
-                notes = "EXCEPTION APPROVED by Reviewer Officer ($now): Variance resolved under Chapter IV Section 12 Rule."
-            )
-
-            // Update application: Discrepancy cleared, promoted to SANCTIONED!
-            db.applicationDao().updateStage(
-                appId = item.applicationId,
-                stage = "SANCTIONED",
-                statusText = "Sanctioned (MoTA/ST/2026/PMS-8902) — Cleared for DBT Disbursement",
-                timestamp = now,
-                hasDiscrepancy = false,
-                pendingAction = null
-            )
-
-            db.auditLogDao().insert(
-                AuditLogEntity(
-                    action = "Exception Approved by Reviewer",
-                    actor = "Tribal Welfare Officer (Desk #4)",
-                    details = "Approved income variance for application ${item.applicationId}. Application promoted to SANCTIONED.",
-                    timestamp = now
-                )
-            )
-        } else {
-            val updatedItem = item.copy(
-                status = "RESUBMIT",
-                resolvedAt = now,
-                resolutionNotes = notes.ifBlank { "Additional clarification required on income certificate." }
-            )
-            db.reviewQueueDao().update(updatedItem)
-
-            db.applicationDao().updateStage(
-                appId = item.applicationId,
-                stage = "UNDER_VERIFICATION",
-                statusText = "Clarification Requested by Reviewer",
-                timestamp = now,
-                hasDiscrepancy = true,
-                pendingAction = "Please check JAGO assistant or provide updated income declaration."
-            )
-
-            db.auditLogDao().insert(
-                AuditLogEntity(
-                    action = "Clarification Requested",
-                    actor = "Tribal Welfare Officer",
-                    details = "Requested additional clarification for ${item.studentName}.",
-                    timestamp = now
-                )
-            )
-        }
+    suspend fun resetAllDemoData() = withContext(Dispatchers.IO) {
+        SeedData.resetDemo(database)
+        _activeStudentId.value = "STU_2026_01"
     }
 
-    suspend fun applyForUnreachedScheme(schemeId: String) = withContext(Dispatchers.IO) {
-        val scheme = db.schemeDao().getSchemeById(schemeId) ?: return@withContext
-        val now = getCurrentTimestamp()
+    /**
+     * Live State-Aware Dynamic JAGO AI Assistant
+     */
+    suspend fun generateJagoResponse(userQuery: String): String = withContext(Dispatchers.IO) {
+        val currentStudentId = _activeStudentId.value
+        val student = database.studentDao().getStudent(currentStudentId)
+        val applications = database.applicationDao().getApplicationsForStudent(currentStudentId)
+        val documents = database.documentDao().getDocumentsForStudent(currentStudentId)
+        val disbursements = database.disbursementDao().getDisbursementsForStudent(currentStudentId)
+        val schemes = database.schemeDao().getAllSchemes()
 
-        val existingApp = db.applicationDao().getApplicationBySchemeId(schemeId)
-        if (existingApp != null) {
-            val updated = existingApp.copy(
-                currentStage = "UNDER_VERIFICATION",
-                statusText = "Applied with 1-Click DigiLocker & APAAR credentials",
-                appliedDate = now,
-                lastUpdated = now,
-                pendingActionDesc = "Cross-matching UDISE+ and AISHE enrollment records.",
-                hasDiscrepancy = false
-            )
-            db.applicationDao().updateApplication(updated)
-        } else {
-            val newApp = ApplicationEntity(
-                id = "APP_${scheme.code}_${System.currentTimeMillis()}",
-                studentId = "STU_2026_01",
-                schemeId = scheme.id,
-                schemeCode = scheme.code,
-                schemeName = scheme.name,
-                currentStage = "UNDER_VERIFICATION",
-                statusText = "Applied with 1-Click DigiLocker & APAAR credentials",
-                appliedDate = now,
-                lastUpdated = now,
-                pendingActionDesc = null,
-                hasDiscrepancy = false,
-                sanctionedAmount = 250000.0,
-                estimatedDisbursementDays = 21
-            )
-            db.applicationDao().insertAll(listOf(newApp))
+        val studentName = student?.name ?: "Student"
+        val q = userQuery.lowercase(Locale.ENGLISH)
+
+        when {
+            q.contains("status") || q.contains("application") || q.contains("track") -> {
+                if (applications.isEmpty()) {
+                    "Johar $studentName! You currently have no active scholarship applications. You can explore and apply for eligible schemes in the 5 Schemes tab."
+                } else {
+                    val appSummaries = applications.joinToString("\n• ") { app ->
+                        "${app.schemeName}: Current Stage is '${app.currentStage.replace("_", " ")}'. ${app.statusText}"
+                    }
+                    "Johar $studentName! Here is the live status of your applications:\n\n• $appSummaries"
+                }
+            }
+
+            q.contains("discrepancy") || q.contains("mismatch") || q.contains("income") || q.contains("issue") || q.contains("review") -> {
+                val appWithIssue = applications.find { it.hasDiscrepancy }
+                if (appWithIssue != null) {
+                    "Regarding your ${appWithIssue.schemeCode} application:\n\nAn automated check found a minor income difference (+11.9%) between self-declared income (₹${student?.annualIncome?.toInt()}) and e-District revenue registry. \n\n✨ Good news: Because both numbers are below the ₹2.50 Lakh scheme limit, this does NOT block your application. It has been auto-routed to District Officer Desk #4 for non-blocking clearance."
+                } else {
+                    "Great news $studentName! All your current applications and documents have zero unresolved discrepancies. All automated checks are green."
+                }
+            }
+
+            q.contains("eligible") || q.contains("apply") || q.contains("top class") || q.contains("fellowship") || q.contains("scheme") -> {
+                val eligibleUnreached = schemes.filter { sc -> applications.none { it.schemeId == sc.id } }
+                if (eligibleUnreached.isNotEmpty()) {
+                    val first = eligibleUnreached.first()
+                    "Based on your authenticated profile as a ${student?.category} enrolled in ${student?.institutionName}, you are eligible for:\n\n• **${first.name}**\nBenefit: ${first.maxAmount}\nDeadline: ${first.deadline}\n\nSince your Aadhaar and DigiLocker credentials are already linked in your single-wallet, you can apply in 1 click without re-uploading any paperwork!"
+                } else {
+                    "You are already enrolled or have applied for all relevant MoTA schemes matching your current academic level."
+                }
+            }
+
+            q.contains("payment") || q.contains("dbt") || q.contains("money") || q.contains("bank") || q.contains("disburs") -> {
+                val total = disbursements.sumOf { it.amount }
+                if (disbursements.isNotEmpty()) {
+                    val last = disbursements.first()
+                    "Your DBT status is active on Section 7 Aadhaar Rail.\n\n• Total Received: ₹${String.format(Locale.ENGLISH, "%,d", total.toInt())}\n• Recent Credit: ₹${String.format(Locale.ENGLISH, "%,d", last.amount.toInt())} on ${last.date} to ${last.bankName} (${last.accountMasked})\n• Transaction Ref: ${last.txnRef}"
+                } else {
+                    "No payments have been disbursed yet for this session. Approved grants will credit directly into your Aadhaar-seeded bank account (${student?.bankAccountMasked})."
+                }
+            }
+
+            q.contains("document") || q.contains("digilocker") || q.contains("upload") || q.contains("wallet") -> {
+                val docCount = documents.size
+                "Your single-wallet contains $docCount verified digital credentials from DigiLocker & UIDAI (including ST Caste, Income, and APAAR ID). You never have to upload physical photocopies for any of the 5 MoTA schemes."
+            }
+
+            else -> {
+                "Johar $studentName! I am JAGO, your AI Tribal Scholarship Guide. I can help you check your application status, explain verification checks, recommend unreached schemes, or track DBT bank transfers. What would you like to know?"
+            }
         }
-
-        db.auditLogDao().insert(
-            AuditLogEntity(
-                action = "Unreached Beneficiary Applied",
-                actor = "Student (Birsa Munda Tirkey)",
-                details = "Applied for '${scheme.name}' using existing DigiLocker wallet and APAAR ID credentials without re-uploading documents.",
-                timestamp = now
-            )
-        )
-    }
-
-    suspend fun generateJagoResponse(query: String, lang: String): JagoMessage = withContext(Dispatchers.IO) {
-        val student = db.studentDao().getStudent()
-        val apps = db.applicationDao().getAllApplicationsFlow() // get current snapshot
-        val pendingReviews = db.reviewQueueDao().getById("REV_ITEM_01")
-        val q = query.trim().lowercase(Locale.ROOT)
-
-        val isOdia = lang == "or"
-        val isHindi = lang == "hi"
-        val isGondi = lang == "gon"
-
-        val responseText: String
-        val quickChips: List<String>
-
-        if (q.contains("pending") || q.contains("status") || q.contains("flag") || q.contains("अधूरा") || q.contains("ସ୍ଥିତି")) {
-            val hasPendingReview = pendingReviews?.status == "PENDING"
-            responseText = when {
-                isHindi -> if (hasPendingReview) {
-                    "नमस्ते ${student?.name ?: ""}! आपके 'पोस्ट-मैट्रिक छात्रवृत्ति' आवेदन में ई-डिस्ट्रिक्ट आय प्रमाणपत्र में ₹2,10,000 बनाम ₹2,35,000 का अंतर पाया गया था। अच्छी बात यह है कि आपका आवेदन रुका नहीं है — यह समीक्षा अधिकारी (Reviewer Desk) को गैर-अवरोधक (Non-blocking) अपवाद के रूप में भेजा गया है। अनुमोदन के बाद छात्रवृत्ति स्वीकृत हो जाएगी।"
-                } else {
-                    "बधाई! आपके सभी आवेदन जांच में सफल रहे हैं। 'पोस्ट-मैट्रिक छात्रवृत्ति' अधिकारी द्वारा अनुमोदित कर दी गई है और डीबीटी भुगतान पाइपलाइन में है!"
-                }
-                isOdia -> if (hasPendingReview) {
-                    "ନମସ୍କାର ${student?.name ?: ""}! ଆପଣଙ୍କର 'ପୋଷ୍ଟ-ମାଟ୍ରିକ ଛାତ୍ରବୃତ୍ତି' ଆବେଦନରେ e-District ଆୟ ତାଲିକାରେ ₹୨,୧୦,୦୦୦ ବନାମ ₹୨,୩୫,୦୦୦ ତାରତମ୍ୟ ଥିଲା। ଏଥିପାଇଁ ଆପଣଙ୍କୁ ବନ୍ଦ କରାଯାଇ ନାହିଁ — ଏହା ଅଧିକାରୀଙ୍କ ସମୀକ୍ଷା (Reviewer Queue) କୁ ପଠାଯାଇଛି। ଖୁବଶୀଘ୍ର ମଞ୍ଜୁର ହୋଇଯିବ।"
-                } else {
-                    "ଅଭିନନ୍ଦନ! ଆପଣଙ୍କର ସମସ୍ତ ଆବେଦନ ସଫଳତାର ସହ ଯାଞ୍ଚ ହୋଇଛି। DBT ମାଧ୍ୟମରେ ଆପଣଙ୍କ କାନାରା ବ୍ୟାଙ୍କ ଖାତାକୁ ଟଙ୍କା ପ୍ରଦାନ କରାଯିବ।"
-                }
-                isGondi -> if (hasPendingReview) {
-                    "जोहार ${student?.name ?: ""}! नीवा पोस्ट-मैट्रिक स्कॉलरशिप अर्जी ते ई-डिस्ट्रिक्ट आमदनी ते थोड़ो फरक वातुर। अर्जी बंद आयो, अफसर review desk ते जांच कींतोर। जल्दी clear आता।"
-                } else {
-                    "जोहार! नीवा सप्पो अर्जी मंजूर आतुंग। Canara Bank खाते ते DBT पैसा वायताल!"
-                }
-                else -> if (hasPendingReview) {
-                    "Hello ${student?.name ?: "Student"}! On your 'Post-Matric Scholarship for ST Students', an 11.9% income variance was detected via e-District (Declared ₹2,10,000 vs Registry ₹2,35,000). Crucially, your application is NOT blocked — it was auto-routed to the Reviewer Desk exception queue. Since both figures are below the ₹2.5 Lakh ceiling, approval is anticipated shortly!"
-                } else {
-                    "Great news! Your applications are progressing smoothly. The income exception on Post-Matric Scholarship has been cleared by the reviewer officer, and sanction order MoTA/ST/2026 is released for DBT disbursement."
-                }
-            }
-            quickChips = listOf("Why was my income flagged?", "When will amount disburse?", "Am I eligible for Top Class?")
-        } else if (q.contains("eligible") || q.contains("top class") || q.contains("पात्र") || q.contains("ଯୋଗ୍ୟ")) {
-            responseText = when {
-                isHindi -> "हाँ! आपके UDISE+ और APAAR (NIT राउरकेला) रिकॉर्ड के आधार पर आप 'शीर्ष श्रेणी शिक्षा छात्रवृत्ति (Top Class Education for ST Students)' के लिए पूर्णतः पात्र हैं। इसमें पूरी ट्यूशन फीस + ₹2,22,000 वार्षिक भत्ता मिलता है। आप डिजीलॉकर के माध्यम से बिना नया फॉर्म भरे तुरंत आवेदन कर सकते हैं!"
-                isOdia -> "ହଁ! ଆପଣଙ୍କର UDISE+ ଏବଂ APAAR ରେକର୍ଡ (NIT ରାଉରକେଲା) ଅନୁସାରେ ଆପଣ 'Top Class Education for ST Students' ପାଇଁ ସମ୍ପୂର୍ଣ୍ଣ ଯୋଗ୍ୟ। ଏଥିରେ ସମସ୍ତ ଫିସ୍ ସହ ବାର୍ଷିକ ₹୨,୨୨,୦୦୦ ମିଳିବ। DigiLocker ଦ୍ୱାରା ଆପଣ ତୁରନ୍ତ ୧-କ୍ଲିକ୍ରେ ଆବେଦନ କରିପାରିବେ।"
-                isGondi -> "होय! नीवा NIT राउरकेला UDISE+/APAAR दाखिला लेका नीकु 'Top Class Education' स्कॉलरशिप पायसी हकदार आंतोर। पूरी फीस + ₹2,22,000 मियांतोर। DigiLocker ते एक क्लिक ते अर्जी कूट।"
-                else -> "Yes! Based on your active UDISE+ and APAAR enrollment at National Institute of Technology, Rourkela (AISHE-U-0355), you are 100% eligible for the 'Top Class Education for ST Students' scheme (Full Tuition + ₹2,22,000/yr allowance). You haven't claimed it yet — tap the banner on your dashboard to apply instantly via DigiLocker!"
-            }
-            quickChips = listOf("Apply for Top Class Scheme", "What documents are needed?", "Check application status")
-        } else if (q.contains("disburs") || q.contains("payment") || q.contains("dbt") || q.contains("भुगतान") || q.contains("ଟଙ୍କା")) {
-            responseText = when {
-                isHindi -> "आपकी छात्रवृत्ति सीधे आपके आधार-सीडेड बैंक खाते (Canara Bank A/C **4821) में DBT (PFMS) के जरिए भेजी जाती है। आपके पिछले वर्ष की प्री-मैट्रिक छात्रवृत्ति (₹4,500) सफलतापूर्वक जमा हो चुकी है। पोस्ट-मैट्रिक छात्रवृत्ति की ₹78,000 राशि अगले 14 दिनों में अनुमानित है।"
-                isOdia -> "ଆପଣଙ୍କ ଛାତ୍ରବୃତ୍ତି ସିଧାସଳଖ ଆଧାର-ଲିଙ୍କ୍ଡ କାନାରା ବ୍ୟାଙ୍କ ଖାତା (A/C **4821) ରେ PFMS-DBT ଦ୍ୱାରା ଜମା ହେବ। ପୂର୍ବ ପ୍ରି-ମାଟ୍ରିକ ଛାତ୍ରବୃତ୍ତି (₹୪,୫୦୦) ଜମା ହୋଇସାରିଛି ଏବଂ ପରବର୍ତ୍ତୀ ₹୭୮,୦୦୦ ଆଗାମୀ ୧୪ ଦିନ ମଧ୍ୟରେ ମିଳିବ।"
-                isGondi -> "नीवा स्कॉलरशिप सीधा आधार-सीडेड Canara Bank (A/C **4821) ते PFMS DBT रेल ते वायताल। ₹78,000 पैसा 14 दिवस ते खाते ते जमा आता।"
-                else -> "Your scholarships are disbursed directly to your Aadhaar-seeded Canara Bank account (A/C **4821) via the PFMS-DBT rail. Your prior Pre-Matric grant of ₹4,500 was successfully disbursed (UTR: PFMS/DBT/20241220/89127391). The current Post-Matric grant of ₹78,000 is estimated within 14 days following reviewer clearance."
-            }
-            quickChips = listOf("View DBT Statement", "What is my bank account?", "Is Aadhaar seeded?")
-        } else if (q.contains("document") || q.contains("digilocker") || q.contains("कागजात") || q.contains("ଦସ୍ତାବିଜ")) {
-            responseText = when {
-                isHindi -> "आपके डिजीलॉकर वॉलेट में 5 दस्तावेज सुरक्षित जुड़े हैं: आधार कार्ड, एसटी जाति प्रमाणपत्र (बिरहोर PVTG), आय प्रमाणपत्र, 12वीं की मार्कशीट, और मूल निवास प्रमाणपत्र। एक बार जोड़े गए ये कागजात सभी 5 योजनाओं में दोबारा अपलोड किए बिना उपयोग होते हैं।"
-                isOdia -> "ଆପଣଙ୍କ DigiLocker ୱାଲେଟରେ ୫ଟି ପ୍ରମାଣପତ୍ର ସଂଯୁକ୍ତ ଅଛି: ଆଧାର କାର୍ଡ, ଏସଟି ଜାତି ପ୍ରମାଣପତ୍ର (ବିରହୋର PVTG), ଆୟ ପ୍ରମାଣପତ୍ର, ଯୁକ୍ତ ଦୁଇ ମାର୍କସିଟ୍ ଏବଂ ବାସିନ୍ଦା ପ୍ରମାଣପତ୍ର। କୌଣସି ପେପର ପୁନଃ-ଅପଲୋଡ୍ କରିବାକୁ ପଡିବ ନାହିଁ।"
-                isGondi -> "नीवा DigiLocker ते 5 कागजात जुड़ल मंतुर: आधार, एसटी जाति (बिरहोर), आमदनी, मार्कशीट, निवास। दुबारा अपलोड कीया जरूरत सिला।"
-                else -> "Your DigiLocker wallet currently holds 5 verified digital credentials: UIDAI Aadhaar, ST Caste Certificate (Birhor PVTG), Income Certificate, CBSE Class 12 Marksheet, and Odisha Resident Certificate. Under Ekikrit's single-wallet architecture, these are shared across all 5 schemes without redundant re-uploads."
-            }
-            quickChips = listOf("View Documents Tab", "Add New Document", "Check validity")
-        } else {
-            responseText = when {
-                isHindi -> "जोहार! मैं जागो (JAGO) — जनजातीय छात्रों के लिए एकीकृत छात्रवृत्ति सहायक हूँ। आप मुझसे अपनी छात्रवृत्ति की स्थिति, अटके हुए कारणों, नई योजनाओं या डिजीलॉकर दस्तावेजों के बारे में पूछ सकते हैं।"
-                isOdia -> "ଜୋହାର! ମୁଁ ଜାଗୋ (JAGO) — ଜନଜାତି ଛାତ୍ରଛାତ୍ରୀଙ୍କ ପାଇଁ ଏକୀକୃତ ଛାତ୍ରବୃତ୍ତି ସହାୟକ। ଆପଣଙ୍କ ଆବେଦନ ସ୍ଥିତି, ଯୋଗ୍ୟତା ବା ଦସ୍ତାବିଜ ସମ୍ପର୍କରେ ଯେକୌଣସି ପ୍ରଶ୍ନ ପଚାରନ୍ତୁ।"
-                isGondi -> "जोहार! नन्ना जागो (JAGO) — आदिवासी पोरा-पोरियाल साटी स्कॉलरशिप सहायक। अर्जी, पात्रता, कागजात बारे ते केंज।"
-                else -> "Johar! I am JAGO — your unified multilingual assistant for Ministry of Tribal Affairs scholarships. How can I help you today? You can check pending items, scheme eligibility, DBT disbursement timelines, or DigiLocker records."
-            }
-            quickChips = listOf("What's pending on my application?", "Am I eligible for Top Class?", "When will amount disburse?", "Which documents are linked?")
-        }
-
-        JagoMessage(
-            sender = "JAGO",
-            content = responseText,
-            timestamp = "Just now",
-            quickChips = quickChips
-        )
     }
 }

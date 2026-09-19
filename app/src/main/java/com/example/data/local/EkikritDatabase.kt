@@ -19,9 +19,11 @@ import kotlinx.coroutines.launch
         VerificationRecordEntity::class,
         ReviewQueueEntity::class,
         DisbursementEntity::class,
+        NotificationEntity::class,
+        ApplicationDraftEntity::class,
         AuditLogEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class EkikritDatabase : RoomDatabase() {
@@ -32,6 +34,8 @@ abstract class EkikritDatabase : RoomDatabase() {
     abstract fun verificationRecordDao(): VerificationRecordDao
     abstract fun reviewQueueDao(): ReviewQueueDao
     abstract fun disbursementDao(): DisbursementDao
+    abstract fun notificationDao(): NotificationDao
+    abstract fun applicationDraftDao(): ApplicationDraftDao
     abstract fun auditLogDao(): AuditLogDao
 
     companion object {
@@ -43,29 +47,20 @@ abstract class EkikritDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     EkikritDatabase::class.java,
-                    "ekikrit_scholarship_db"
+                    "ekikrit_unified_db"
                 )
-                .fallbackToDestructiveMigration(true)
-                .addCallback(object : RoomDatabase.Callback() {
-                    override fun onCreate(db: SupportSQLiteDatabase) {
-                        super.onCreate(db)
-                        INSTANCE?.let { database ->
-                            scope.launch(Dispatchers.IO) {
-                                SeedData.populateDatabase(database)
+                    .fallbackToDestructiveMigration()
+                    .addCallback(object : Callback() {
+                        override fun onCreate(db: SupportSQLiteDatabase) {
+                            super.onCreate(db)
+                            INSTANCE?.let { database ->
+                                scope.launch(Dispatchers.IO) {
+                                    SeedData.populateInitialDatabase(database)
+                                }
                             }
                         }
-                    }
-
-                    override fun onDestructiveMigration(db: SupportSQLiteDatabase) {
-                        super.onDestructiveMigration(db)
-                        INSTANCE?.let { database ->
-                            scope.launch(Dispatchers.IO) {
-                                SeedData.populateDatabase(database)
-                            }
-                        }
-                    }
-                })
-                .build()
+                    })
+                    .build()
                 INSTANCE = instance
                 instance
             }
