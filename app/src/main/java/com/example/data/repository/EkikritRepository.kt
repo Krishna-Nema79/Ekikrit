@@ -195,11 +195,11 @@ class EkikritRepository(
             database.reviewQueueDao().insert(output.reviewItem)
         }
 
-        val newStage = if (hasMismatch) "INSTITUTE_VERIFICATION" else "SANCTIONED"
+        val newStage = if (hasMismatch) "INSTITUTE_VERIFICATION" else "STATE_VERIFICATION"
         val statusText = if (hasMismatch) {
             "Multi-source API verification completed (6/7 verified). 1 minor income variance auto-routed to District Review Desk."
         } else {
-            "All 7 government registries verified. Sanction Order MoTA/2026/09 issued."
+            "All 7 government registries verified. State Tribal Welfare clearance in progress."
         }
 
         database.applicationDao().updateStage(
@@ -259,9 +259,9 @@ class EkikritRepository(
         // Update application state
         val application = database.applicationDao().getApplicationById(reviewItem.applicationId)
         if (application != null) {
-            val newStage = if (isApproved) "SANCTIONED" else "INSTITUTE_VERIFICATION"
+            val newStage = if (isApproved) "STATE_VERIFICATION" else "INSTITUTE_VERIFICATION"
             val newStatusText = if (isApproved) {
-                "Officer review complete. Exception cleared. Sanction order generated for Aadhaar DBT payment."
+                "Officer review complete. Exception cleared. Sent for State Tribal Welfare clearance."
             } else {
                 "Action requested: Officer requested additional clarification on income certificate."
             }
@@ -318,7 +318,7 @@ class EkikritRepository(
 
         if (eligibility.status == com.example.domain.EligibilityStatus.NOT_ELIGIBLE) {
             val errorReason = eligibility.failedCriteria.firstOrNull() ?: "Your profile does not currently meet this scheme's eligibility requirements."
-            val userMsg = "Your profile does not currently meet this scheme's eligibility requirements. $errorReason"
+            val userMsg = "You're not currently eligible for this scholarship. $errorReason"
             database.notificationDao().insert(
                 NotificationEntity(
                     id = "NOTIF_${System.currentTimeMillis()}",
@@ -333,20 +333,36 @@ class EkikritRepository(
             return@withContext Pair(false, userMsg)
         }
 
-        if (eligibility.conflictReason != null) {
-            val conflictMsg = "You already have an active scholarship/fellowship. ${eligibility.conflictReason}"
-            database.notificationDao().insert(
-                NotificationEntity(
-                    id = "NOTIF_${System.currentTimeMillis()}",
-                    studentId = student.id,
-                    title = "Application Blocked: Active Award Conflict",
-                    message = conflictMsg,
-                    type = "SCHEME",
-                    timestamp = getCurrentTimestamp(),
-                    isRead = false
+        if (eligibility.status == com.example.domain.EligibilityStatus.NEEDS_REVIEW) {
+            if (eligibility.conflictReason != null) {
+                val conflictMsg = "You already have an active scholarship/fellowship. ${eligibility.conflictReason}"
+                database.notificationDao().insert(
+                    NotificationEntity(
+                        id = "NOTIF_${System.currentTimeMillis()}",
+                        studentId = student.id,
+                        title = "Application Blocked: Active Award Conflict",
+                        message = conflictMsg,
+                        type = "SCHEME",
+                        timestamp = getCurrentTimestamp(),
+                        isRead = false
+                    )
                 )
-            )
-            return@withContext Pair(false, conflictMsg)
+                return@withContext Pair(false, conflictMsg)
+            } else {
+                val reviewMsg = "Your eligibility needs review. ${eligibility.summaryRecommendation}"
+                database.notificationDao().insert(
+                    NotificationEntity(
+                        id = "NOTIF_${System.currentTimeMillis()}",
+                        studentId = student.id,
+                        title = "Application Flagged: Eligibility Review",
+                        message = reviewMsg,
+                        type = "SCHEME",
+                        timestamp = getCurrentTimestamp(),
+                        isRead = false
+                    )
+                )
+                return@withContext Pair(false, reviewMsg)
+            }
         }
 
         val newAppId = "APP_${scheme.code.take(4)}_${System.currentTimeMillis().toString().takeLast(6)}"
@@ -434,7 +450,7 @@ class EkikritRepository(
         database.applicationDraftDao().getDraft(currentStudentId, schemeId)
     }
 
-    private suspend fun syncPendingDrafts() = withContext(Dispatchers.IO) {
+    suspend fun syncPendingDrafts() = withContext(Dispatchers.IO) {
         val drafts = database.applicationDraftDao().getPendingSyncDrafts()
         for (draft in drafts) {
             applyForScheme(draft.schemeId, draft.declaredIncome, studentIdOverride = draft.studentId)
@@ -510,7 +526,9 @@ class EkikritRepository(
         val studentName = student?.name ?: "Student"
         val q = userQuery.lowercase(Locale.ENGLISH)
 
-        when {
+        val prefix = if (_isOfflineMode.value) "⚡ [JAGO Offline Assistance Mode Active]\n\n" else ""
+
+        val response = when {
             q.contains("status") || q.contains("application") || q.contains("track") -> {
                 if (applications.isEmpty()) {
                     "Johar $studentName! You currently have no active scholarship applications. You can explore and apply for eligible schemes in the 5 Schemes tab."
@@ -525,19 +543,56 @@ class EkikritRepository(
             q.contains("discrepancy") || q.contains("mismatch") || q.contains("income") || q.contains("issue") || q.contains("review") -> {
                 val appWithIssue = applications.find { it.hasDiscrepancy }
                 if (appWithIssue != null) {
-                    "Regarding your ${appWithIssue.schemeCode} application:\n\nAn automated check found a minor income difference (+11.9%) between self-declared income (₹${student?.annualIncome?.toInt()}) and e-District revenue registry. \n\n✨ Good news: Because both numbers are below the ₹2.50 Lakh scheme limit, this does NOT block your application. It has been auto-routed to District Officer Desk #4 for non-blocking clearance."
+                    val records = database.verificationRecordDao().getRecordsForApp(appWithIssue.id)
+                    val mismatchRecord = records.find { it.status == "MISMATCH" }
+                    val reviewItem = database.reviewQueueDao().getByAppId(appWithIssue.id)
+
+                    val provider = mismatchRecord?.sourceSystem ?: "State Revenue Registry"
+                    val declared = mismatchRecord?.declaredValue ?: "Self-Declared"
+                    val retrieved = mismatchRecord?.retrievedValue ?: "Verified Record"
+                    val reason = mismatchRecord?.notes ?: appWithIssue.pendingActionDesc ?: "Variance under officer review"
+                    val desk = reviewItem?.sourceSystem ?: "District Review Desk"
+
+                    "Regarding your ${appWithIssue.schemeCode} application:\n\nAn automated check identified a data variance with $provider:\n" +
+                    "• Declared Value: $declared\n" +
+                    "• Verified Registry Value: $retrieved\n" +
+                    "• Status / Reason: $reason\n\n" +
+                    "✨ Note: This item is under active non-blocking evaluation by $desk."
                 } else {
                     "Great news $studentName! All your current applications and documents have zero unresolved discrepancies. All automated checks are green."
                 }
             }
 
             q.contains("eligible") || q.contains("apply") || q.contains("top class") || q.contains("fellowship") || q.contains("scheme") -> {
-                val eligibleUnreached = schemes.filter { sc -> applications.none { it.schemeId == sc.id } }
-                if (eligibleUnreached.isNotEmpty()) {
-                    val first = eligibleUnreached.first()
-                    "Based on your authenticated profile as a ${student?.category} enrolled in ${student?.institutionName}, you are eligible for:\n\n• **${first.name}**\nBenefit: ${first.maxAmount}\nDeadline: ${first.deadline}\n\nSince your Aadhaar and DigiLocker credentials are already linked in your single-wallet, you can apply in 1 click without re-uploading any paperwork!"
+                if (student == null) {
+                    "That information is not currently available."
                 } else {
-                    "You are already enrolled or have applied for all relevant MoTA schemes matching your current academic level."
+                    val unappliedSchemes = schemes.filter { sc -> applications.none { it.schemeId == sc.id } }
+                    val evaluations = unappliedSchemes.map { sc ->
+                        val eval = com.example.domain.EligibilityEngine.evaluate(student, sc, documents, applications)
+                        Pair(sc, eval)
+                    }
+
+                    val eligibleList = evaluations.filter { it.second.status == com.example.domain.EligibilityStatus.ELIGIBLE }
+                    val reviewList = evaluations.filter { it.second.status == com.example.domain.EligibilityStatus.NEEDS_REVIEW }
+
+                    if (eligibleList.isNotEmpty()) {
+                        val first = eligibleList.first()
+                        val sc = first.first
+                        val eval = first.second
+                        "Based on EligibilityEngine evaluation for your authenticated profile as a ${student.category} at ${student.institutionName}:\n\n" +
+                        "• **${sc.name}** (${eval.matchPercentage}% Match)\n" +
+                        "Benefit: ${sc.maxAmount}\n" +
+                        "Matched Criteria: ${eval.matchedCriteria.joinToString(", ")}\n\n" +
+                        "You can apply in 1 click using your linked DigiLocker single-wallet credentials!"
+                    } else if (reviewList.isNotEmpty()) {
+                        val first = reviewList.first()
+                        val sc = first.first
+                        val eval = first.second
+                        "For **${sc.name}**, review is required: ${eval.summaryRecommendation} ${eval.conflictReason ?: ""}"
+                    } else {
+                        "You are already enrolled or have applied for all relevant MoTA schemes matching your current academic level."
+                    }
                 }
             }
 
@@ -560,5 +615,7 @@ class EkikritRepository(
                 "Johar $studentName! I am JAGO, your AI Tribal Scholarship Guide. I can help you check your application status, explain verification checks, recommend unreached schemes, or track DBT bank transfers. What would you like to know?"
             }
         }
+
+        prefix + response
     }
 }

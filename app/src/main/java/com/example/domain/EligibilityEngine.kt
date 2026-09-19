@@ -159,8 +159,8 @@ object EligibilityEngine {
         val matchPercentage = ((matched.size.toDouble() / totalCriteria) * 100).toInt().coerceIn(0, 100)
 
         val status = when {
-            conflictReason != null -> EligibilityStatus.NEEDS_REVIEW
             failed.isNotEmpty() -> EligibilityStatus.NOT_ELIGIBLE
+            conflictReason != null -> EligibilityStatus.NEEDS_REVIEW
             missingDocs.isNotEmpty() -> EligibilityStatus.NEEDS_REVIEW
             else -> EligibilityStatus.ELIGIBLE
         }

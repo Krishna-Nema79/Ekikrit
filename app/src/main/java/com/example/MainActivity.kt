@@ -75,7 +75,11 @@ fun EkikritMainApp(
     val strings = getAppStrings(selectedLanguage)
 
     val snackbarHostState = remember { SnackbarHostState() }
-    var showIntroTour by remember { mutableStateOf(true) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val sharedPrefs = remember(context) { context.getSharedPreferences("ekikrit_prefs", android.content.Context.MODE_PRIVATE) }
+    var showIntroTour by remember {
+        mutableStateOf(!sharedPrefs.getBoolean("has_completed_onboarding", false))
+    }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var showAuditModal by remember { mutableStateOf(false) }
@@ -494,7 +498,10 @@ fun EkikritMainApp(
         // Starting Intro Tour
         if (showIntroTour) {
             AppIntroTourModal(
-                onDismiss = { showIntroTour = false }
+                onDismiss = {
+                    sharedPrefs.edit().putBoolean("has_completed_onboarding", true).apply()
+                    showIntroTour = false
+                }
             )
         }
 
