@@ -30,6 +30,9 @@ interface StudentDao {
     @Update
     suspend fun updateStudent(student: StudentEntity)
 
+    @Query("UPDATE students SET hasConsentGiven = :hasConsent WHERE id = :studentId")
+    suspend fun updateStudentConsent(studentId: String, hasConsent: Boolean)
+
     @Query("DELETE FROM students")
     suspend fun deleteAll()
 }

@@ -70,6 +70,7 @@ fun EkikritMainApp(
     val isSimulating by viewModel.isSimulatingVerification.collectAsStateWithLifecycle()
     val userNotice by viewModel.userNotice.collectAsStateWithLifecycle()
     val jagoMessages by viewModel.jagoMessages.collectAsStateWithLifecycle()
+    val scholarshipMatch by viewModel.scholarshipMatch.collectAsStateWithLifecycle()
 
     val strings = getAppStrings(selectedLanguage)
 
@@ -512,7 +513,10 @@ fun EkikritMainApp(
         if (showConsentDialog) {
             DpdpConsentDialog(
                 hasConsentGiven = student?.hasConsentGiven ?: true,
-                onConfirm = { granted -> /* Handled in consent */ },
+                onConfirm = { granted ->
+                    viewModel.updateStudentConsent(granted)
+                    viewModel.toggleConsentDialog(false)
+                },
                 onDismiss = { viewModel.toggleConsentDialog(false) }
             )
         }
@@ -521,7 +525,10 @@ fun EkikritMainApp(
         if (showSecurityModal) {
             SecurityPrivacyModal(
                 hasConsent = student?.hasConsentGiven ?: true,
-                onRevokeOrGrantConsent = { granted -> /* Handled in consent */ },
+                onRevokeOrGrantConsent = { granted ->
+                    viewModel.updateStudentConsent(granted)
+                    showSecurityModal = false
+                },
                 onDismiss = { showSecurityModal = false }
             )
         }

@@ -192,3 +192,13 @@ data class JagoMessage(
     val timestamp: String = "Just now",
     val quickChips: List<String> = emptyList()
 )
+
+data class ScholarshipMatch(
+    val scheme: SchemeEntity,
+    val whyMatched: String,
+    val eligibilityStatus: String, // ELIGIBLE, NEEDS_REVIEW, NOT_ELIGIBLE
+    val matchPercentage: Int,
+    val requiredDocuments: List<String>,
+    val reusableDocuments: List<String>,
+    val nextAction: String
+)

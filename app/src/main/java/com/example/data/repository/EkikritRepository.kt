@@ -74,6 +74,38 @@ class EkikritRepository(
     // All Students list for quick demo persona switching
     val allStudentsFlow: Flow<List<StudentEntity>> = database.studentDao().getAllStudentsFlow()
 
+    // Dynamic Scholarship Match Flow based on active student profile, documents, and schemes
+    val scholarshipMatchFlow: Flow<ScholarshipMatch?> = combine(
+        studentFlow,
+        schemesFlow,
+        documentsFlow,
+        applicationsFlow
+    ) { student, schemes, docs, apps ->
+        if (student == null) return@combine null
+        val unappliedSchemes = schemes.filter { scheme ->
+            apps.none { it.schemeId == scheme.id }
+        }
+        var bestMatch: ScholarshipMatch? = null
+        var highestScore = -1
+
+        for (scheme in unappliedSchemes) {
+            val eval = EligibilityEngine.evaluate(student, scheme, docs, apps)
+            if (eval.status == com.example.domain.EligibilityStatus.ELIGIBLE && eval.matchPercentage > highestScore) {
+                highestScore = eval.matchPercentage
+                bestMatch = ScholarshipMatch(
+                    scheme = scheme,
+                    whyMatched = "Matched using your verified academic record at ${student.institutionName} and ${student.category} tribal profile.",
+                    eligibilityStatus = eval.status.name,
+                    matchPercentage = eval.matchPercentage,
+                    requiredDocuments = listOf("Aadhaar", "ST Caste", "Income", "Marksheet"),
+                    reusableDocuments = docs.filter { it.isReusable }.map { it.type },
+                    nextAction = "Claim with 1-Click (No Paperwork)"
+                )
+            }
+        }
+        bestMatch
+    }
+
     private fun getCurrentTimestamp(): String {
         return SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.ENGLISH).format(Date())
     }
@@ -145,10 +177,10 @@ class EkikritRepository(
     /**
      * Executes multi-source verification across all 7 providers.
      */
-    suspend fun runSevenSourceVerification(applicationId: String) = withContext(Dispatchers.IO) {
-        val currentStudentId = _activeStudentId.value
-        val student = database.studentDao().getStudent(currentStudentId) ?: return@withContext
+    suspend fun runSevenSourceVerification(applicationId: String, studentIdOverride: String? = null) = withContext(Dispatchers.IO) {
         val application = database.applicationDao().getApplicationById(applicationId) ?: return@withContext
+        val currentStudentId = studentIdOverride ?: application.studentId
+        val student = database.studentDao().getStudent(currentStudentId) ?: return@withContext
         val documents = database.documentDao().getDocumentsForStudent(currentStudentId)
 
         val output = UnifiedVerificationEngine.executeSevenSourceVerification(student, application, documents)
@@ -267,17 +299,55 @@ class EkikritRepository(
     }
 
     /**
-     * Applies for an unreached or new scheme for the active student.
+     * Applies for an unreached or new scheme for the specified or active student.
+     * Enforces eligibility evaluation and active scholarship conflict rules.
      */
-    suspend fun applyForScheme(schemeId: String, declaredIncome: Double? = null) = withContext(Dispatchers.IO) {
-        val currentStudentId = _activeStudentId.value
-        val student = database.studentDao().getStudent(currentStudentId) ?: return@withContext
-        val scheme = database.schemeDao().getSchemeById(schemeId) ?: return@withContext
-        val docs = database.documentDao().getDocumentsForStudent(currentStudentId)
-        val existingApps = database.applicationDao().getApplicationsForStudent(currentStudentId)
+    suspend fun applyForScheme(
+        schemeId: String,
+        declaredIncome: Double? = null,
+        studentIdOverride: String? = null
+    ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val targetStudentId = studentIdOverride ?: _activeStudentId.value
+        val student = database.studentDao().getStudent(targetStudentId) ?: return@withContext Pair(false, "Student not found")
+        val scheme = database.schemeDao().getSchemeById(schemeId) ?: return@withContext Pair(false, "Scheme not found")
+        val docs = database.documentDao().getDocumentsForStudent(targetStudentId)
+        val existingApps = database.applicationDao().getApplicationsForStudent(targetStudentId)
 
         // Check eligibility engine
         val eligibility = EligibilityEngine.evaluate(student, scheme, docs, existingApps)
+
+        if (eligibility.status == com.example.domain.EligibilityStatus.NOT_ELIGIBLE) {
+            val errorReason = eligibility.failedCriteria.firstOrNull() ?: "Your profile does not currently meet this scheme's eligibility requirements."
+            val userMsg = "Your profile does not currently meet this scheme's eligibility requirements. $errorReason"
+            database.notificationDao().insert(
+                NotificationEntity(
+                    id = "NOTIF_${System.currentTimeMillis()}",
+                    studentId = student.id,
+                    title = "Application Blocked: Ineligible",
+                    message = userMsg,
+                    type = "SCHEME",
+                    timestamp = getCurrentTimestamp(),
+                    isRead = false
+                )
+            )
+            return@withContext Pair(false, userMsg)
+        }
+
+        if (eligibility.conflictReason != null) {
+            val conflictMsg = "You already have an active scholarship/fellowship. ${eligibility.conflictReason}"
+            database.notificationDao().insert(
+                NotificationEntity(
+                    id = "NOTIF_${System.currentTimeMillis()}",
+                    studentId = student.id,
+                    title = "Application Blocked: Active Award Conflict",
+                    message = conflictMsg,
+                    type = "SCHEME",
+                    timestamp = getCurrentTimestamp(),
+                    isRead = false
+                )
+            )
+            return@withContext Pair(false, conflictMsg)
+        }
 
         val newAppId = "APP_${scheme.code.take(4)}_${System.currentTimeMillis().toString().takeLast(6)}"
         val now = getCurrentTimestamp()
@@ -312,14 +382,14 @@ class EkikritRepository(
 
         database.applicationDao().insert(newApp)
 
-        // Clear any saved draft
+        // Clear any saved draft for this specific student
         database.applicationDraftDao().deleteDraft(student.id, scheme.id)
 
         database.auditLogDao().insert(
             AuditLogEntity(
                 action = "APPLICATION_SUBMIT_ONE_CLICK",
                 actor = student.name,
-                details = "Submitted 1-click application for ${scheme.name} (ID: $newAppId). Zero paper re-upload.",
+                details = "Submitted 1-click application for ${scheme.name} (ID: $newAppId, Student: ${student.id}). Zero paper re-upload.",
                 timestamp = now
             )
         )
@@ -336,10 +406,12 @@ class EkikritRepository(
             )
         )
 
-        // If online, immediately run multi-source verification
+        // If online, immediately run multi-source verification for this application and target student
         if (!isOffline) {
-            runSevenSourceVerification(newAppId)
+            runSevenSourceVerification(newAppId, student.id)
         }
+
+        Pair(true, "Applied successfully with 1-click DigiLocker credentials! Zero paper re-upload.")
     }
 
     suspend fun saveApplicationDraft(schemeId: String, currentStep: Int, declaredIncome: Double, selectedDocIds: String) = withContext(Dispatchers.IO) {
@@ -365,8 +437,21 @@ class EkikritRepository(
     private suspend fun syncPendingDrafts() = withContext(Dispatchers.IO) {
         val drafts = database.applicationDraftDao().getPendingSyncDrafts()
         for (draft in drafts) {
-            applyForScheme(draft.schemeId, draft.declaredIncome)
+            applyForScheme(draft.schemeId, draft.declaredIncome, studentIdOverride = draft.studentId)
         }
+    }
+
+    suspend fun updateStudentConsent(studentId: String, hasConsent: Boolean) = withContext(Dispatchers.IO) {
+        database.studentDao().updateStudentConsent(studentId, hasConsent)
+        val student = database.studentDao().getStudent(studentId)
+        database.auditLogDao().insert(
+            AuditLogEntity(
+                action = if (hasConsent) "CONSENT_GRANT" else "CONSENT_REVOKE",
+                actor = student?.name ?: "Student",
+                details = "DPDP Act 2023 digital consent ${if (hasConsent) "GRANTED" else "REVOKED/RESTRICTED"} for student ID $studentId.",
+                timestamp = getCurrentTimestamp()
+            )
+        )
     }
 
     suspend fun pullDocumentFromDigiLocker(type: String, title: String, number: String, issuer: String) = withContext(Dispatchers.IO) {

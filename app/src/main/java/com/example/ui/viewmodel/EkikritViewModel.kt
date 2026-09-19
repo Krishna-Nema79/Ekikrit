@@ -87,6 +87,12 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         initialValue = emptyList()
     )
 
+    val scholarshipMatch = repository.scholarshipMatchFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = null
+    )
+
     val isOfflineMode = repository.isOfflineMode
 
     private val _userMode = MutableStateFlow(UserMode.STUDENT)
@@ -218,8 +224,15 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
 
     fun applyForScheme(schemeId: String, declaredIncome: Double? = null) {
         viewModelScope.launch {
-            repository.applyForScheme(schemeId, declaredIncome)
-            _userNotice.value = "Applied successfully with 1-click DigiLocker credentials! Zero paper re-upload."
+            val (success, msg) = repository.applyForScheme(schemeId, declaredIncome)
+            _userNotice.value = msg
+        }
+    }
+
+    fun updateStudentConsent(granted: Boolean) {
+        viewModelScope.launch {
+            repository.updateStudentConsent(repository.activeStudentId.value, granted)
+            _userNotice.value = if (granted) "DPDP Act 2023 consent granted." else "DPDP Act 2023 consent revoked."
         }
     }
 

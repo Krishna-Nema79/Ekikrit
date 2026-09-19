@@ -18,12 +18,19 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+import com.example.data.model.ScholarshipMatch
+
 @Composable
 fun UnreachedBeneficiaryBanner(
     onOneClickApply: () -> Unit,
+    match: ScholarshipMatch? = null,
     onDismiss: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    val titleText = match?.let { "You qualify for '${it.scheme.name}'!" } ?: "You qualify for 'Top Class ST Education'!"
+    val descText = match?.let { "${it.whyMatched} Reusable documents: ${it.reusableDocuments.joinToString(", ")}." }
+        ?: "Based on your verified enrollment at NIT Rourkela, you can claim 100% tuition coverage + allowance instantly with your saved documents."
+    val ctaText = match?.nextAction ?: "Claim with 1-Click (No Paperwork)"
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -93,7 +100,7 @@ fun UnreachedBeneficiaryBanner(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "You qualify for 'Top Class ST Education'!",
+                    text = titleText,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -102,7 +109,7 @@ fun UnreachedBeneficiaryBanner(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "Based on your verified enrollment at NIT Rourkela, you can claim 100% tuition coverage + allowance instantly with your saved documents.",
+                    text = descText,
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFE2E8F0)
                 )
@@ -121,7 +128,7 @@ fun UnreachedBeneficiaryBanner(
                         .testTag("apply_unreached_scheme_btn")
                 ) {
                     Text(
-                        text = "Claim with 1-Click (No Paperwork)",
+                        text = ctaText,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold
                     )

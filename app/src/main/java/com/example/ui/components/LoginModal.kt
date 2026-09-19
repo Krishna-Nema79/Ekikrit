@@ -80,7 +80,7 @@ fun LoginModal(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "UIDAI Aadhaar OTP & Multi-Persona Session Rail",
+                        text = "Prototype authentication • UIDAI Aadhaar e-KYC & Multi-Persona Rail",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -343,10 +343,13 @@ fun LoginModal(
 
                     Button(
                         onClick = {
-                            if (otp.trim() == "123456") {
+                            if (timerSeconds <= 0 && !isTimerRunning) {
+                                errorMessage = "This OTP has expired. Request a new OTP."
+                            } else if (otp.trim() == "123456") {
+                                errorMessage = null
                                 onLoginWithPhone(mobileOrAadhaar, studentNameInput.ifBlank { null })
                             } else {
-                                errorMessage = "Invalid OTP entered. For prototype demo, use OTP 123456."
+                                errorMessage = "That OTP is not correct. Please try again."
                             }
                         },
                         modifier = Modifier
