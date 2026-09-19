@@ -102,8 +102,17 @@ fun SchemeDetailScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
+                        val stageNameFormatted = when (application.currentStage) {
+                            "SUBMITTED" -> "Application Submitted"
+                            "INSTITUTE_VERIFICATION", "UNDER_VERIFICATION" -> "Institute Verification"
+                            "STATE_VERIFICATION" -> "State Verification"
+                            "MINISTRY_REVIEW" -> "Ministry Review"
+                            "SANCTIONED" -> "Sanctioned"
+                            "DISBURSED" -> "Payment Disbursed"
+                            else -> application.currentStage
+                        }
                         Text(
-                            text = if (application.hasDiscrepancy) "Exception Routing Active" else "Current Stage: ${application.currentStage}",
+                            text = if (application.hasDiscrepancy) "Exception Routing Active" else "Current Stage: $stageNameFormatted",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (application.hasDiscrepancy) Color(0xFFD97706) else MaterialTheme.colorScheme.primary

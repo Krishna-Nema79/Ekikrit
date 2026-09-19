@@ -742,13 +742,15 @@ fun CompactSchemeApplicationCard(
 ) {
     val (dotColor, badgeBg, friendlyStatus) = when (application.currentStage) {
         "SUBMITTED" -> Triple(Color(0xFF2563EB), Color(0xFFEFF6FF), "Submitted • In Review")
-        "UNDER_VERIFICATION" -> if (application.hasDiscrepancy) {
-            Triple(Color(0xFFD97706), Color(0xFFFEF3C7), "Under Review (No action needed)")
+        "INSTITUTE_VERIFICATION", "UNDER_VERIFICATION" -> if (application.hasDiscrepancy) {
+            Triple(Color(0xFFD97706), Color(0xFFFEF3C7), "Institute Review (Variance flagged)")
         } else {
-            Triple(Color(0xFF0284C7), Color(0xFFF0F9FF), "Checking documents")
+            Triple(Color(0xFF0284C7), Color(0xFFF0F9FF), "Institute Verification")
         }
-        "SANCTIONED" -> Triple(Color(0xFF059669), Color(0xFFECFDF5), "Approved • Grant Ready")
-        "DISBURSED" -> Triple(Color(0xFF16A34A), Color(0xFFF0FDF4), "Deposited to Bank")
+        "STATE_VERIFICATION" -> Triple(Color(0xFF7C3AED), Color(0xFFF5F3FF), "State Verification")
+        "MINISTRY_REVIEW" -> Triple(Color(0xFFC026D3), Color(0xFFFDF4FF), "Ministry Review")
+        "SANCTIONED" -> Triple(Color(0xFF059669), Color(0xFFECFDF5), "Sanctioned • DBT Queued")
+        "DISBURSED" -> Triple(Color(0xFF16A34A), Color(0xFFF0FDF4), "Payment Disbursed")
         else -> Triple(Color(0xFF9333EA), Color(0xFFFAF5FF), "Eligible to Claim")
     }
 

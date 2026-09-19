@@ -9,6 +9,7 @@ import com.example.data.model.ApplicationEntity
 import com.example.data.repository.EkikritRepository
 import com.example.domain.EligibilityEngine
 import com.example.domain.EligibilityStatus
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -166,5 +167,74 @@ class EkikritFinalValidationTest {
         repository.setOfflineMode(true)
         val response = repository.generateJagoResponse("Check my eligibility")
         assertTrue(response.contains("Offline Assistance Mode Active"))
+    }
+
+    @Test
+    fun testReviewerApprovalNotificationWording() = runBlocking {
+        val student1 = SeedData.students[0]
+        repository.switchStudent(student1.id)
+
+        val app = db.applicationDao().getApplicationsForStudent(student1.id).first()
+        repository.runSevenSourceVerification(app.id)
+
+        val reviewItem = db.reviewQueueDao().getByAppId(app.id)
+        assertNotNull(reviewItem)
+
+        repository.resolveReviewItem(reviewItem!!.id, isApproved = true, notes = "Verified within tolerance")
+
+        val notifications = db.notificationDao().getNotificationsForStudentFlow(student1.id).first()
+        val reviewNotif = notifications.firstOrNull { it.title == "Verification issue resolved" }
+
+        assertNotNull(reviewNotif)
+        assertTrue(reviewNotif!!.message.contains("moved to State Verification"))
+        assertEquals("REVIEW", reviewNotif.type)
+    }
+
+    @Test
+    fun testScholarshipsFilterStrictlyChecksEligibleStatus() = runBlocking {
+        val student3 = SeedData.students[2] // Secondary school student
+        val topClassScheme = SeedData.schemes.first { it.id == "SCH_TOPCLASS" }
+
+        val eval = EligibilityEngine.evaluate(student3, topClassScheme, emptyList(), emptyList())
+        assertEquals(EligibilityStatus.NOT_ELIGIBLE, eval.status)
+        assertNotEquals(EligibilityStatus.ELIGIBLE, eval.status)
+    }
+
+    @Test
+    fun testStudentDataIsolationQueries() = runBlocking {
+        val studentA = SeedData.students[0]
+        val studentB = SeedData.students[1]
+
+        val docsA = db.documentDao().getDocumentsForStudent(studentA.id)
+        val docsB = db.documentDao().getDocumentsForStudent(studentB.id)
+
+        assertTrue(docsA.all { it.studentId == studentA.id })
+        assertTrue(docsB.all { it.studentId == studentB.id })
+
+        val appsA = db.applicationDao().getApplicationsForStudent(studentA.id)
+        val appsB = db.applicationDao().getApplicationsForStudent(studentB.id)
+
+        assertTrue(appsA.all { it.studentId == studentA.id })
+        assertTrue(appsB.all { it.studentId == studentB.id })
+    }
+
+    @Test
+    fun testDpdpConsentPersistence() = runBlocking {
+        val student1 = SeedData.students[0]
+
+        // Grant consent
+        repository.updateStudentConsent(student1.id, true)
+        var updatedStudent = db.studentDao().getStudent(student1.id)
+        assertTrue(updatedStudent!!.hasConsentGiven)
+
+        // Revoke consent
+        repository.updateStudentConsent(student1.id, false)
+        updatedStudent = db.studentDao().getStudent(student1.id)
+        assertFalse(updatedStudent!!.hasConsentGiven)
+
+        // Grant again
+        repository.updateStudentConsent(student1.id, true)
+        updatedStudent = db.studentDao().getStudent(student1.id)
+        assertTrue(updatedStudent!!.hasConsentGiven)
     }
 }

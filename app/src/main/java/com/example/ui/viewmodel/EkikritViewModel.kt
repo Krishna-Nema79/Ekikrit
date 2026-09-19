@@ -215,7 +215,7 @@ class EkikritViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.resolveReviewItem(itemId, isApproved, notes)
             _userNotice.value = if (isApproved) {
-                "Exception approved! Application promoted to SANCTIONED."
+                "Verification issue resolved. Application moved to State Verification."
             } else {
                 "Clarification requested from student."
             }

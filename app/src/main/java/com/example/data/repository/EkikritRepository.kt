@@ -279,9 +279,9 @@ class EkikritRepository(
                 NotificationEntity(
                     id = "NOTIF_${System.currentTimeMillis()}",
                     studentId = reviewItem.studentId,
-                    title = if (isApproved) "Review Approved & Scheme Sanctioned" else "Action Required on Review",
-                    message = if (isApproved) "Officer cleared income variance for ${application.schemeCode}. Sanctioned!" else "Officer note: $notes",
-                    type = if (isApproved) "SANCTION" else "REVIEW",
+                    title = if (isApproved) "Verification issue resolved" else "Action Required on Review",
+                    message = if (isApproved) "Your verification issue was cleared and your application has moved to State Verification." else "Officer note: $notes",
+                    type = "REVIEW",
                     timestamp = now,
                     isRead = false
                 )

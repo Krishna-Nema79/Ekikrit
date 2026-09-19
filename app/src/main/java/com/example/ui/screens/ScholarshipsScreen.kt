@@ -50,7 +50,7 @@ fun ScholarshipsScreen(
                 if (student == null) schemes
                 else schemes.filter { sc ->
                     val result = EligibilityEngine.evaluate(student, sc, documents, applications)
-                    result.status == EligibilityStatus.ELIGIBLE || result.matchPercentage >= 70
+                    result.status == EligibilityStatus.ELIGIBLE
                 }
             }
             "NEEDS_ATTENTION" -> schemes.filter { sc -> applications.any { it.schemeId == sc.id && it.hasDiscrepancy } }
