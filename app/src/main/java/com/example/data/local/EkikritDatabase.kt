@@ -12,10 +12,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Database(
-    entities = [StudentEntity::class, SchemeEntity::class, ApplicationEntity::class,
-        DocumentEntity::class, VerificationRecordEntity::class, ReviewQueueEntity::class,
-        DisbursementEntity::class, AuditLogEntity::class],
-    version = 2,
+    entities = [
+        StudentEntity::class,
+        SchemeEntity::class,
+        ApplicationEntity::class,
+        DocumentEntity::class,
+        VerificationRecordEntity::class,
+        ReviewQueueEntity::class,
+        DisbursementEntity::class,
+        NotificationEntity::class,
+        ApplicationDraftEntity::class,
+        AuditLogEntity::class
+    ],
+    version = 3,
     exportSchema = false
 )
 abstract class EkikritDatabase : RoomDatabase() {
@@ -26,19 +35,29 @@ abstract class EkikritDatabase : RoomDatabase() {
     abstract fun verificationRecordDao(): VerificationRecordDao
     abstract fun reviewQueueDao(): ReviewQueueDao
     abstract fun disbursementDao(): DisbursementDao
+    abstract fun notificationDao(): NotificationDao
+    abstract fun applicationDraftDao(): ApplicationDraftDao
     abstract fun auditLogDao(): AuditLogDao
 
     companion object {
         @Volatile private var INSTANCE: EkikritDatabase? = null
 
-        fun getDatabase(context: Context, scope: CoroutineScope): EkikritDatabase =
-            INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(context.applicationContext, EkikritDatabase::class.java, "ekikrit_scholarship_db")
-                    .addMigrations(MIGRATION_1_2)
-                    .addCallback(object : RoomDatabase.Callback() {
+        fun getDatabase(context: Context, scope: CoroutineScope): EkikritDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    EkikritDatabase::class.java,
+                    "ekikrit_unified_db"
+                )
+                    .fallbackToDestructiveMigration()
+                    .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
-                            INSTANCE?.let { database -> scope.launch(Dispatchers.IO) { SeedData.populateDatabase(database) } }
+                            INSTANCE?.let { database ->
+                                scope.launch(Dispatchers.IO) {
+                                    SeedData.populateInitialDatabase(database)
+                                }
+                            }
                         }
                     })
                     .build()

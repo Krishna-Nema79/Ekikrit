@@ -64,13 +64,13 @@ fun PendingActionsCard(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (discrepancyApps.isNotEmpty()) "Global Action Queue (${discrepancyApps.size} Scheme Active)" else "All 5 Schemes in Good Standing",
+                        text = if (discrepancyApps.isNotEmpty()) "What Needs Your Attention (${discrepancyApps.size})" else "You're All Caught Up!",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (discrepancyApps.isNotEmpty()) "Automated exception routing active: Student not rejected or blocked" else "All documents verified across NSP, SFMP & NOS",
+                        text = if (discrepancyApps.isNotEmpty()) "Standard review in progress • Your grant is not blocked" else "All your scholarship applications and documents are on track",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -81,7 +81,7 @@ fun PendingActionsCard(
                 Spacer(modifier = Modifier.height(14.dp))
                 discrepancyApps.forEach { app ->
                     Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                         shape = RoundedCornerShape(12.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
                         modifier = Modifier
@@ -109,13 +109,13 @@ fun PendingActionsCard(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = app.pendingActionDesc ?: "Income variance detected (+11.9%). Auto-routed to manual Reviewer Desk for tolerance check.",
+                                    text = "Your e-District income record differs slightly (+11.9%) from declared income, but is well within the ₹2.5L limit.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Student guidance: No action required from you. District Officer is verifying within 48 hours.",
+                                    text = "✓ No student action needed. District Officer is verifying within 48h.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color(0xFFD97706),
                                     fontWeight = FontWeight.SemiBold
@@ -143,7 +143,7 @@ fun PendingActionsCard(
                     ) {
                         Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Reviewer Desk", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text("Review Status", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
 
                     OutlinedButton(
@@ -156,7 +156,7 @@ fun PendingActionsCard(
                     ) {
                         Icon(Icons.Default.SmartToy, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Ask JAGO Bot", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Text("Ask JAGO", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }
